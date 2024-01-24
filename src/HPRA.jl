@@ -3,12 +3,18 @@ import Graphs
 using Distributions, StatsPlots
 using Printf
 ####################################################
+using MLJ
+measures("FScore")
+
+# Gepmetrical mean f1 score (β=1) Dunno what levels are supposed to be ;^P
+m = FScore(levels=[0, 1], checks=false)
+
+####################################################
 
 # used in constructing sammples of hyperegde degrees to choose from
 struct Spl <: Sampleable{Univariate,Discrete}
     vect::Vector{T} where {T<:Real}
 end
-
 
 ####################################################
 function Base.rand(spl::Spl; n=1)
@@ -17,19 +23,7 @@ function Base.rand(spl::Spl; n=1)
 end;
 
 #################################################################33
-# # convenince struct 
-# mutable struct HyperEdge
-#     e_id::Int64
-#     #nodes::Vector{Union{Nothing,Int64}}
-#     nodes::Dict{Int64,Float64}
-# end
-# HyperEdge() = HyperEdge(0, Dict{Int64,Float64}())
-# HyperEdge(e::Int64) = HyperEdge(e,)
-# HHyperEdge(e::Int64, v::Vector{Union{Nothing,Int64}}) = HyperEdge(e, v)
-# HyperEdge(h::Hypergraph, e_idx::Int64) = HyperEdge(e_idx, h[:, e_idx])
 
-#
-#################################################################33
 # convenince struct 
 mutable struct HyperEdge{T}
     e_id::Int64
@@ -49,7 +43,7 @@ function HyperEdge{T}(h::Hypergraph{Float64,Nothing,Nothing,Dict{T,Float64}}, e_
     end
     return hedge
 end
-#-----------------------
+## ====================================== ##
 import Base: ==
 
 function ==(h1::HyperEdge, h2::HyperEdge)
@@ -60,11 +54,13 @@ function ==(h1::HyperEdge, h2::HyperEdge)
     cond1 && cond2
 
 end
-#-----------------------
+
+#############################################################
 function h_edge_in_cont(set_of_h_edges, h_edge)
     """
     set_of_h_edges is a collection of hypegedges, h_edge is a hyperedge
-    Returns a set of unique h-edges.
+    Returns a set of unique h-edges, ie a set of Hyperedges. 
+    For some reason the Set builtin does not work as naively expected
     """
 
     if any(==(h_edge), set_of_h_edges)
@@ -74,6 +70,53 @@ function h_edge_in_cont(set_of_h_edges, h_edge)
     end
     return set_of_h_edges
 end
+
+#################################################################33
+
+
+function HE2Vect(h::HyperEdge, dim::Int64)
+    """
+    Gets a vector of dimension dim out of a hyperedges' dict (called 'nodes')
+    if nodes = Dict([1=>1., 3=>1.])  and dim = 4, we get [1., 0., 1., ]
+    """
+    hVect = Vector{Union{Nothing,Float64}}(undef    , dim)
+    # kk = collect(keys(h.nodes))
+    # vv = collect(values(h.nodes))
+    map(dd -> hVect[dd[1]] = dd[2], collect(h.nodes))
+    replace!(hVect, nothing => 0.0)
+
+    return hVect
+end
+####################################################################
+
+# # convenince struct 
+# mutable struct HyperEdgeV{T}
+#     e_id::Int64  # edge id
+#     nodes::Vector{Union{Nothing,T}}
+# end
+
+# HyperEdgeV() = HyperEdgeV{Int64}(0, Vector{Union{Nothing,Int64}}())
+# HyperEdgeV(e::Int64, v::Vector{Union{Nothing,Int64}}) = HyperEdge(e, v)
+
+# # This one copies a HyperEdgeV from a hypergraph 
+# function HyperEdgeV{T}(h::Hypergraph{Float64,Nothing,Nothing,Dict{T,Float64}}, e_idx::Int64) where {T}
+
+#     hedge = HyperEdgeV{T}(e_idx)
+#     hedge.nodes = replace(h[:, e_idx], nothing => 0.0)
+
+#     return hedge
+# end
+# #-----------------------
+# import Base: ==
+
+# function ==(h1::HyperEdgeV, h2::HyperEdgeV)
+
+#     cond1 = h1.e_id == h2.e_id
+#     cond2 = h1.nodes == h2.nodes
+
+#     cond1 && cond2
+
+# end
 
 #################################################################33
 
@@ -505,6 +548,7 @@ end
 #     return node_prob_distr
 # end
 
+#######################################################
 function create_node_sampler(ndb::Vector{Float64})::Spl
 
     pooldensity = ndb |> unique |> sort
@@ -538,3 +582,136 @@ function get_random_node_by_degree(nbl, node_deg; accuracy=0.1)
     res = (findall(isapprox(node_deg[1], atol=0.1), nbl) |> rand)
 
 end
+
+##################################################
+
+
+function create_new_hyperedge(hg::Hypergraph; n::Int64=1)
+    """
+    Returns a vector of HyperEdges of length n, extrapolated from hg
+    """
+    weight = 1.0
+    # Step 3 - 4: We get a hyperedge degree with the help of a sampler from the graph, before we add a new edge
+    samp = hyperedge_dist(hg)
+    new_hedge_size = rand(samp)[1]
+
+    #foreach(x -> println(x), new_hedge_sizes)
+
+    # Get The vector(nodes degrees) nbd[node_i] = deg(node_i) 
+    # For a particular degree we can choose a node  
+    nbd = nodes_degree(hg)
+    if any(>(1e6), nbd)
+        @show typeof(nbd), length(nbd)
+    end
+    #step 5-6 get first node
+    # get the distribution of node degrees
+    nodeSpl = create_node_sampler(nbd)
+
+    # the vector we will return at the end
+    hyperedges = Vector{HyperEdge}(undef, n)
+
+    for n_of_edges in 1:n
+        node_degree1 = rand(nodeSpl) # this is also a vector w/ 1 element, so use it as in nbd[ node_degrees[1] ]
+
+        #foreach(x -> println(rand(samp)[1], "  ", rand(samp)), 1:20)
+        #new_hedge_size = deepcopy(new_hedge_sizes[1])
+        #@show new_hedge_sizes[1], new_hedge_size, node_degree1, typeof(node_degree1)
+
+        # get a random vertex from the vec of vertices w/ deg as found
+        first_node = get_random_node_by_degree(nbd, node_degree1)
+
+        # step 1 - 2
+        # So now we can add the new hyperdge, whcih contains the first node w/ weight 1.
+        #add_hyperedge!(hg, vertices=Dict(first_node => 1.0))
+        new_he = HyperEdge(nhe(hg) + 1, Dict(first_node => 1.0))
+
+        #@show new_hedge_size, first_node  #, length(new_he.nodes) < new_hedge_size
+        # add an empty hyperedge to the (Hypergraph
+        #add_hyperedge!(hg, new_he)
+        # a loop over the needed number of elements in the new h-edge 
+        while length(new_he.nodes) < new_hedge_size
+
+            #calculate scores and put them in a vector 
+            # This is defined to be of length eq to n of nodes in the hgraph, 
+            # which is a bit too much, but this way we have an easy way to know 
+            # which node had which score without the need for a dict, just by the node's index.
+            # And vectors are quite fast.
+            scores = calc_NHAS(hg, new_he)
+
+            # Choose a node (which is not in new_he) w/ prob proportional to its score 
+            # -> the scores are weights of the sampling. so   
+            # we can take only non zero scores (since 0 does not contribute anything)
+            # and also we ignore the nodes in new_he (these are already in)
+            indeces = findall(!=(0.0), scores)
+
+            scores_view = getindex(scores, indeces)
+            # @show indeces
+            # choose a node
+            newV_idx = sample(indeces, Weights(scores_view))
+            #
+            # if (length(new_he.nodes) % 10) == 0        
+            #     @printf "length of nodes %i Chose node  %i w/ a score of %.2f \n" length(new_he.nodes) newV_idx scores[newV_idx]
+            # end
+
+            # This is added to the new hyperegde and to new_he ecdfplot
+            new_he.nodes[newV_idx] = weight
+            #hg[newV_idx, new_he.e_id] = 1.0
+
+        end
+        hyperedges[n_of_edges] = new_he
+
+    end
+    # we could add here one test: there shouldn't be any dublicates in new_he.nodes.
+    # (or overload push! to do the checking)
+    return hyperedges
+end
+
+#############################################################################
+function find_disconnected_he(hyperg, cv_partition)
+    """
+        For a given partition cv_partition = (kfold, onefold) of hypergraph hyperg, check hyperg[kfold] (ie E^T)
+        for rows (ie nodes) that sum to 0. These are nodes that do not exist in hyperg[kfold] (E^M), 
+        nut shoud exist in hyperg[onefold]. 
+        We remove the hyperedges that contain these nodes from hyperg[onefold].
+        If there are j such hyperedges, then the 'missing' set will now contain 
+        onefold - j hyperedges 
+    """
+    (kfold, onefold) = cv_partition
+    finder = find_all_empty_nodes(hyperg[:, kfold])
+    isempty_finder = isempty(finder)
+    println("is empty finder: $(Tuple(finder)) -> $(isempty_finder)")
+
+
+    if isempty_finder
+        # basically we do nothing: onefold is the input range cv_partition[2]
+        return onefold
+    end
+
+    # ok, if we are here, finder is not empty
+    discarded_he = Vector{Int64}()
+    # we know that at rows of hyperg[:, kfold] = E^T given by finder 
+    # there are only 0 entries. We need to find the columns in 
+    # hyperg[:, onefold] = E^M that contain non zero values. 
+    foreach(finder) do x
+        #sanity: finder must be (n,1) a vector.
+        if x[2] != 1
+            throw("Error in find_disconnected_he. Exiting.")
+            exit(1)
+        end
+
+        non_zero_hyperedges = @pipe replace(hyperg[x[1], onefold], nothing => 0) |> findall(!=(0), _)
+        println("Node $(x[1]) is zero. Checking E^M at $(non_zero_hyperedges)")
+        push!(discarded_he, non_zero_hyperedges...)
+        #display(hyperg[:, onefold])
+
+    end
+
+    # this HE set is discarded
+    unique!(discarded_he)
+    println("Hyperedges #$(onefold[discarded_he]) ------   Discarded")
+    onefold_copy = (onefold |> collect |> deepcopy)
+    return deleteat!(onefold_copy, discarded_he)
+
+end
+
+#############################################################################

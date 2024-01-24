@@ -59,7 +59,7 @@ end
 
 using MLJ
 measures("FScore")
-m1 = FScore()
+m1 = FScore() #levels=[0,1])
 m2 = MulticlassFScore()
 
 y₀ = coerce(categorical(rand("abc", 10)), Multiclass)
@@ -96,6 +96,7 @@ f1_score(y_true, y_pred, average='micro') ---> 0.3333333333333333
 f1_score(y_true, y_pred, average='weighted')---> 0.26666666666666666
 f1_score(y_true, y_pred, average=None)---> array([0.8, 0. , 0. ])
 =#
+m1 = FScore(levels=[0,1])
 m1(y_true, y_pred)
 m2(y_true, y_pred)
 # but MulticlassFscore has 3 aliases.
@@ -130,15 +131,20 @@ def compute_f1_score(hyperedge, predicted_hyperedge):
     return f1_score
 """
 
+# symmetric
 py"compute_f1_score"(y_true, y_pred)
+py"compute_f1_score"(y_pred, y_true)
 # this does not agree w/ any of the above
 
 
 ### Another try 
 
-microf1 = Vector{Float64}(undef,1)
-macrof1 = Vector{Float64}(undef,1)
-pyf1 = Vector{Float64}(undef,1)
+microf1 = Vector{Float64}(undef,0)
+macrof1 = Vector{Float64}(undef,0)
+pyf1 = Vector{Float64}(undef,0)
+pyf1R = Vector{Float64}(undef,0)
+m1f1 = Vector{Float64}(undef,0)
+m1f1R = Vector{Float64}(undef,0)
 
 for i in 1:10000
     y_true = rand([0, 1], 30)
@@ -146,9 +152,12 @@ for i in 1:10000
     
     # confmat(y_true, y_pred)
     pyf = py"compute_f1_score"(y_true,y_pred)
+    pyfR = py"compute_f1_score"(y_pred, y_true)
     jmacrof = macro_f1score(y_true, y_pred)
     #jmicrof = m1(y_true, y_pred)
     jmicrof = micro_f1score(y_true, y_pred)
+    m1f = m1(y_true, y_pred)
+    m1fR = m1(y_pred, y_true)
     #println("py $(pyf),  macro = $(jmacrof),  micro = $(jmicrof)")
     # m1(y_true, y_pred)
     # m2(y_true, y_pred)
@@ -160,10 +169,23 @@ for i in 1:10000
     #multiclass_f1score(y_true, y_pred)
     #confmat(y_true, y_pred)
     push!( pyf1, pyf )
+    push!( pyf1R, pyfR )
+    push!(m1f1, m1f)
+    push!(m1f1R, m1fR)
 end
 
 histogram(macrof1, label="macro") #, bins = .2:.01:.3)
-histogram!(pyf1, label = "python") #, bins = .2:.01:.3)
+
+#############################
+histogram(pyf1, label = "python") #, bins = .2:.01:.3)
+histogram!(m1f1, label = "m1") #, bins = .2:.01:.3)
+############################
+histogram!(m1f1R, label = "m1R") #, bins = .2:.01:.3)
+# m1 symmetric
+sum(m1f1R - m1f1)
+# pyf symmetric
+sum(pyf1R - pyf1)
+
 h_micro = histogram!(microf1, label= "micro")
 
 import StatsBase, Distributions
