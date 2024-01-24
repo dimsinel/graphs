@@ -1,6 +1,7 @@
 using SimpleHypergraphs
 import Graphs
 using Distributions, StatsPlots
+using Printf
 ####################################################
 
 # used in constructing sammples of hyperegde degrees to choose from
@@ -8,26 +9,118 @@ struct Spl <: Sampleable{Univariate,Discrete}
     vect::Vector{T} where {T<:Real}
 end
 
-# #used in constructing sammples of nodes
-# mutable struct SplInt <: Sampleable{Univariate,Discrete}
-#     vect::Vector{Int64}
-# end
 
 ####################################################
-function Base.rand(spl::Spl;n=1)
+function Base.rand(spl::Spl; n=1)
     l = length(spl.vect)
-    spl.vect[rand(1:l,n)]
+    spl.vect[rand(1:l, n)]
 end;
 
 #################################################################33
-# convenince struct 
-mutable struct NewHEdge
-    e_id::Int64
-    nodes::Vector{Union{Nothing,Int64}}
-end
-NewHEdge() = NewHEdge(0, [])
-NewHEdge(e::Int64) = NewHEdge(e, [])
+# # convenince struct 
+# mutable struct HyperEdge
+#     e_id::Int64
+#     #nodes::Vector{Union{Nothing,Int64}}
+#     nodes::Dict{Int64,Float64}
+# end
+# HyperEdge() = HyperEdge(0, Dict{Int64,Float64}())
+# HyperEdge(e::Int64) = HyperEdge(e,)
+# HHyperEdge(e::Int64, v::Vector{Union{Nothing,Int64}}) = HyperEdge(e, v)
+# HyperEdge(h::Hypergraph, e_idx::Int64) = HyperEdge(e_idx, h[:, e_idx])
 
+#
+#################################################################33
+# convenince struct 
+mutable struct HyperEdge{T}
+    e_id::Int64
+    nodes::Dict{T,Float64}
+end
+
+HyperEdge() = HyperEdge{Int64}(0, Dict{Int64,Float64}())
+HyperEdge{T}(e::Int64) where {T} = HyperEdge(e, Dict{T,Float64}())
+
+# This one copies a hyperedge from a hypergraph 
+function HyperEdge{T}(h::Hypergraph{Float64,Nothing,Nothing,Dict{T,Float64}}, e_idx::Int64) where {T}
+    hedge = HyperEdge{T}(e_idx)
+    for j in eachindex(h[:, e_idx])
+        if !isnothing(h[j, e_idx])
+            hedge.nodes[j] = h[j, e_idx]
+        end
+    end
+    return hedge
+end
+#-----------------------
+import Base: ==
+
+function ==(h1::HyperEdge, h2::HyperEdge)
+
+    cond1 = h1.e_id == h2.e_id
+    cond2 = h1.nodes == h2.nodes
+
+    cond1 && cond2
+
+end
+#-----------------------
+function h_edge_in_cont(set_of_h_edges, h_edge)
+    """
+    set_of_h_edges is a collection of hypegedges, h_edge is a hyperedge
+    Returns a set of unique h-edges.
+    """
+
+    if any(==(h_edge), set_of_h_edges)
+        return set_of_h_edges
+    else
+        push!(set_of_h_edges, h_edge)
+    end
+    return set_of_h_edges
+end
+
+#################################################################33
+
+using Pipe: @pipe
+find_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dims=2) |> any(==(0), _)
+find_all_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dims=2) |> findall(==(0), _)
+
+#################################################################33
+
+using MLJBase, MLJ, MLUtils
+
+struct HypergraphClassifier <: MLJBase.Probabilistic
+end
+
+# fit returns the result of applying create_new_hyperedge on input X:
+function MLJBase.fit(model::HypergraphClassifier, verbosity, X, y)
+    fitresult = create_new_hyperedge
+    cache = nothing
+    report = nothing
+    return fitresult, cache, report
+end
+
+# `predict` returns the passed fitresult (pdf) for all new patterns:
+MLJBase.predict(model::HypergraphClassifier, fitresult, Xnew) =
+    [fitresult for r in 1:nrows(Xnew)]
+
+#################################################################
+#
+function SimpleHypergraphs.add_hyperedge!(hg::Hypergraph, newhedge::HyperEdge)
+    """
+    An extension wnich accepts HyperEdge as argument
+    For the time being only weights == 1.0 are implemented
+    """
+    if newhedge.e_id <= length(hg.he2v)
+        #this is not an add, issue a warning
+        println("Cannot add hyperedge $(newhedge.e_id), Gypergraph has $(size(hg.he2v)) h-edges. Returning")
+        return false
+    end
+
+    if newhedge.e_id != size(hg)[2] + 1
+        println("Cannot add hyperedge $(newhedge.e_id) to hypergraph: It contains $(size(hg)[2]) hyperdges.")
+        return false
+    end
+
+    add_hyperedge!(hg, vertices=newhedge.nodes)
+    return true
+end
 
 #############################################################
 function node_degree(h::Hypergraph, v_id::Int; edge_size::Int=1)
@@ -39,7 +132,9 @@ function node_degree(h::Hypergraph, v_id::Int; edge_size::Int=1)
     degr = 0.0
     eds = gethyperedges(h, v_id)
     for (e, w) in eds
-
+        if w == 0.0
+            continue
+        end
         #println("vertex $v_id is in edge $e with weight $(w):")
         vs = getvertices(h, e)
         if length(vs) >= edge_size
@@ -50,9 +145,10 @@ function node_degree(h::Hypergraph, v_id::Int; edge_size::Int=1)
             # end
             #if length(eds) >= edge_size
             degr += w
+
         end
     end
-    if degr > 0.0
+    if degr > eps(Float64)
         return degr
     end
     return nothing
@@ -212,6 +308,10 @@ function HRA_indirect(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edg
     for z in zs
 
         temp = node_degree(h, z)
+        # this may occasionally be nothing (eg if nodes row are 0)
+        if isnothing(temp)
+            continue
+        end
         temp = HRA_direct(h, x, z) / temp
         temp *= HRA_direct(h, z, y)
 
@@ -235,27 +335,6 @@ function HRA(h::Hypergraph, x::Int, y::Int)
     indirec = isnothing(temp) ? 0.0 : temp
     return direc + indirec
 end
-
-#####################################################
-
-function NHAS(h::Hypergraph, x::Int, e_id::Int)
-
-    nhas = 0.0
-    for (y, weight) in getvertices(h, e_id) # this is a dict, we only care for the key
-        #@show y,weight, nhas
-        temp = HRA(h, x, y)
-        #@show temp
-        if isnothing(temp)
-            continue
-        end
-        nhas += temp
-    end
-
-    nhas /= edge_degree(h, e_id)
-
-end
-
-
 
 #####################################################
 
@@ -301,29 +380,93 @@ end
 
 #################################################### 
 
-function nodes_degree(h::Hypergraph)::Vector{Float64}
-    dd = Vector{Float64}(undef, nhv(Hcitecoref))
-    for n in 1:nhv(Hcitecoref)
-        #@show n, node_degree(h, n)
-        dd[n] = node_degree(h, n)
+function nodes_degree(h::Hypergraph)
+    dd = Vector{Float64}(undef, 0)
+    for n in 1:nhv(h)
+        deg = node_degree(h, n)
+        #@show n, deg
+        if isnothing(deg)
+            continue
+        end
+        push!(dd, node_degree(h, n))
     end
     return dd
 end
 
+####################################################
+
+function NHAS(h::Hypergraph, x::Int, e_id::Int)
+
+    nhas = 0.0
+    for (y, weight) in getvertices(h, e_id) # this is a dict, we only care for the key
+        #@show y,weight, nhas
+        temp = HRA(h, x, y)
+        #@show temp
+        if isnothing(temp)
+            continue
+        end
+        nhas += temp
+    end
+
+    nhas /= edge_degree(h, e_id)
+
+end
+
+####################################################
+function NHAS(h::Hypergraph, x::Int, h_edge::HyperEdge)
+
+    if isempty(h_edge.nodes)
+        return 0.0
+    end
+    nhas = 0.0
+    for (y, weight) in h_edge.nodes # this is a dict, we only care for the key
+        #@show y,weight, nhas
+        temp = HRA(h, x, y)
+        #@show temp
+        if isnothing(temp)
+            continue
+        end
+        nhas += temp
+    end
+
+    nhas /= length(h_edge.nodes)
+
+end
+
+####################################################
+
+# function NHAS(h::Hypergraph, new_edge::HyperEdge)  x::Int, e_id::Int)
+
+#     nhas = 0.0
+#     for (y, weight) in getvertices(h, e_id) # this is a dict, we only care for the key
+#         #@show y,weight, nhas
+#         temp = HRA(h, x, y)
+#         #@show temp
+#         if isnothing(temp)
+#             continue
+#         end
+#         nhas += temp
+#     end
+
+#     nhas /= edge_degree(h, e_id)
+
+# end
+
+
 ##################################################################################
 # So now we loop over all the nodes not in new_he and compute theri HNAS wrt new_he
-function calc_NHAS_test(h::Hypergraph, new_he::NewHEdge)
+function calc_NHAS_test(h::Hypergraph, new_he::HyperEdge)
     # Initialize
     nhas_scores = zeros(Float64, nhv(h))
     scores = zeros(Float64, nhv(h))
 
     # Calculate NHAS scores in 2 ways as a test.
-    for nod in setdiff(h_nodes(h), new_he.nodes)
-        sc = NHAS(h, nod, new_he.e_id)
+    for nod in setdiff(h_nodes(h), keys(new_he.nodes))
+        sc = NHAS(h, nod, new_he)
         if sc != 0.0
             nhas_scores[nod] = sc
 
-            for j in new_he.nodes
+            for (j, weig) in new_he.nodes
                 scores[nod] += HRA(h, nod, j)
             end
             scores *= 1.0 / length(new_he.e_id)
@@ -332,14 +475,14 @@ function calc_NHAS_test(h::Hypergraph, new_he::NewHEdge)
     return scores, nhas_scores
 end
 
-function calc_NHAS(h::Hypergraph, new_he::NewHEdge)
+function calc_NHAS(h::Hypergraph, new_he::HyperEdge)
     # Initialize
 
     scores = zeros(Float64, nhv(h))
 
     # Calculate NHAS scores in 2 ways as a test.
-    for nod in setdiff(h_nodes(h), new_he.nodes)
-        sc = NHAS(h, nod, new_he.e_id)
+    for nod in setdiff(h_nodes(h), keys(new_he.nodes))
+        sc = NHAS(h, nod, new_he)
         if sc != 0.0
             scores[nod] = sc
 
@@ -361,3 +504,37 @@ end
 #     end
 #     return node_prob_distr
 # end
+
+function create_node_sampler(ndb::Vector{Float64})::Spl
+
+    pooldensity = ndb |> unique |> sort
+
+    pool = Vector{Int}(undef, 0)
+    # poor man's weighted distribution.
+    # oool contains node degrees. It contains n elements with value n, eg there are 5 fives and 7 sevens
+    # so that when we sample it, the probability to choose degree d will be proportional to the degree.
+    for i in pooldensity
+        for j in 1:i
+            push!(pool, i)
+        end
+    end
+
+    # create the sampler
+    nodeSpl = Spl(pool)
+
+end
+
+##################################################3
+function get_random_node_by_degree(nbl, node_deg; accuracy=0.1)
+    """
+        Returns a random node whose degree is within atol (see Base.isapprox) 
+        of input value deg.
+        if all weights == 1, then  deg should be an int, in which case ec_of_degs could be a 
+        dict and the algo could be faster (no need for searches and findall etc) 
+    """
+
+    #println(">>>>  ", nbl[1:10], "  ", typeof(node_deg), " ", node_deg)
+    #, findall(isapprox(deg, atol=0.1), nbl))
+    res = (findall(isapprox(node_deg[1], atol=0.1), nbl) |> rand)
+
+end

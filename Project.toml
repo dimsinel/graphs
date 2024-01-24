@@ -3,6 +3,7 @@ authors = ["dimsinel"]
 
 [deps]
 Cthulhu = "f68482b8-f384-11e8-15f7-abe071a5a75f"
+CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -16,6 +17,10 @@ GraphsFlows = "06909019-6f44-4949-96fc-b9d9aaa02889"
 IJulia = "7073ff75-c697-5162-941a-fcdaad2a7d2a"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 MAT = "23992714-dd62-5051-b70f-ba57cb901cac"
+MLBase = "f0e99cf1-93fa-52ec-9ecc-5026115318e0"
+MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
+MLJBase = "a7f614a8-145f-11e9-1d2a-a57a1082229d"
+MLUtils = "f1d291b0-491e-4a28-83b9-f70985020b54"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 SGtSNEpi = "e6c19c8d-e382-4a50-b2c6-174ddd647730"
 SNAPDatasets = "fc66bc1b-447b-53fc-8f09-bc9cfb0b0c10"

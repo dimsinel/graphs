@@ -1,6 +1,6 @@
 using DrWatson
 @quickactivate "graphs"
-a
+
 using Graphs
 # Here you may include files from the source directory
 include(srcdir("dummy_src_file.jl"))
@@ -36,3 +36,37 @@ using GraphMakie
 using GraphMakie.NetworkLayout
 g = smallgraph(:dodecahedral)
 graphplot(g; layout=Stress(; dim=3))
+
+
+using MLUtils
+
+# kfolds(n::Integer, k = 5) -> Tuple
+
+# X is a matrix of floats
+# Y is a vector of strings
+X, Y = load_iris()
+
+# The iris dataset is ordered according to their labels,
+# which means that we should shuffle the dataset before
+# partitioning it into training- and test-set.
+Xs, Ys = shuffleobs((X, Y))
+
+# We leave out 15 % of the data for testing
+cv_data, test_data = splitobs((Xs, Ys); at=0.85)
+
+# Next we partition the data using a 10-fold scheme.
+for (train_data, val_data) in kfolds(cv_data; k=10)
+
+  # We apply a lazy transform for data augmentation
+  train_data = mapobs(xy -> (xy[1] .+ 0.1 .* randn.(), xy[2]), train_data)
+
+  for epoch = 1:10
+    # Iterate over the data using mini-batches of 5 observations each
+    for (x, y) in eachobs(train_data, batchsize=5)
+      # ... train supervised model on minibatches here
+      @show x,y
+    end
+  end
+end
+
+
