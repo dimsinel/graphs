@@ -7,22 +7,188 @@ using DrWatson
 includet(srcdir("HPRA.jl"))
 includet(srcdir("HPRA_incidence.jl"))
 
+begin
+    h_rand = random_model(7, 20)
+    # --- or
+    h_rand = random_preferential_model(7, 0.1)
+    @show size(h_rand)
+    a_rand_hg = (replace(h_rand, true => 1) |> Hypergraph)
+    display(a_rand_hg)# @show find_empty_nodes(a_rand_hg)
+    # +
+    hh = myHyperGraph(h_rand)
+    A(hh)
+    A_ndp(hh)
+    Incidence(h_rand)
+end
 
-h_rand = random_model(7, 20)
-# --- or
-h_rand = random_preferential_model(7, 0.1)
-@show size(h_rand)
-a_rand_hg = (replace(h_rand, true => 1) |> Hypergraph)
-display(a_rand_hg)# @show find_empty_nodes(a_rand_hg)
-# +
-hh = myHyperGraph(h_rand)
-A(hh)
-Incidence(h_rand)
+
+#
+
+begin
+    using MAT
+    hpradatadir = projectdir("HyperedgePrediction/dataset_utils/Datasets")
+
+    citeseer1 = matread(joinpath(hpradatadir, "citeseer_coreference.mat"))
+    citeseer2 = matread(joinpath(hpradatadir, "citeseer_cocitation.mat"))
+    coracocite = matread(joinpath(hpradatadir, "cora_cocitation.mat"))
+    # -
+    c1 = citeseer1["S"] # this is just a shortcut
+    c1 = citeseer2["S"]
+    c1 = coracocite["S"]
+
+    Hcitecoref = Hypergraph{Float64}(size(c1)...)  # size(c1) = (1299, 626)
+    nonzeros = findall(!=(0.0), c1) # c1 is a swallow copy of citeseer1["S"]
+    Hcitecoref[nonzeros] .= 1.0
+    HG = myHyperGraph(Hcitecoref)
+end
+
+
+fold_k = 10
+kf = kfolds(size(Hcitecoref)[2], fold_k)
+size.(kf)
+size.(kf[1]), size.(kf[2])
+size(Hcitecoref)
+av_f1 = foldem(HG, fold_k)
+
+@info "mean av f1 after $fold_k folds, $(meanav_f1)()"
+
+
+nn=40
+HHG = Hcitecoref[:,1:(end-nn)] |> Hypergraph |> myHyperGraph
+begin
+    new_Hedges = create_new_hyperedge(HHG, n=nn)
+    Ep = create_mat(new_Hedges) .|> Int64
+    Em = Hcitecoref[:, (end-nn+1):end] |> Hypergraph |> myHyperGraph
+    EMb = Em.H .|> Int64
+    a,b,c = calc_av_F1score_matrix(Ep, EMb)
+   
+    sum(b), sum(c)
+end
+    argmaxg_prime_sum(b)
+argmaxg_sum(b)
+
+
+exit()
+
+
+
+
+new_Hedges = create_new_hyperedge(HG, n=1000)
+# 
+histogram(map(x -> length(x.nodes), new_Hedges))
+nodedist =[]
+foreach(new_Hedges) do x 
+    push!(nodedist, keys(x.nodes)...)
+end
+nds = unique(nodedist) |> sort
+# nds does not contain all nodes 
+missing_nodes = setdiff(1:1299,nds)
+# why? 
+missing_node_degs = Dict()
+for i in missing_nodes
+    missing_node_degs[i] = sum(HG.H[i, :])
+    @show sum(HG.H[i, :])
+end
+count(==(1),values(missing_node_degs))
+count(==(2), values(missing_node_degs))
+count(==(3), values(missing_node_degs))
+#@assert sum(HG.H[i,:]) == 1
+unique(values(missing_node_degs))
+
+####################3333
+## Importang
+## hyperedges need not be unique.
+## hh has hh.e_id h-edges
+@show hh.e_id
+# how many of these are unique?
+@show unique(eachcol(hh.H))
+############################################
+
+exit()
+
+function v_neigh(h::myHyperGraph, node)
+
+    intermediate = h.H[:, findall(==(1), h.H[node, :])]
+    # this produces a vector w/ zeros at rows where the nodes are not neighbours of node 
+    idxs = any(==(1), intermediate, dims=2)
+
+    return findall(==(1), idxs[:, 1])
+
+end
+
+
+
+
+d = Dict{Int,Set{Int}}()
+@time for i in 1:nhv(Hcitecoref)
+    d[i] = h_Neighbours(Hcitecoref, i)
+end
+
+dd = Dict{Int,Vector{Int}}()
+@time for i in 1:nhv(Hcitecoref)
+    dd[i] = v_neigh(HG, i) # much slower
+end
+
+
+
+## dd and d are identical, except that i ∈ dd[i], but i ∉ d[i]
+foreach(dd) do (i, vals)
+    no_i = collect(d[i]) |> deepcopy
+    push!(no_i, i) |> sort!
+    # @show i, (sort(dd[i]) - no_i |> sum) 
+    @assert length(sort(dd[i])) - length(sort(collect(d[i]))) == 1
+    @assert (sort(dd[i]) - no_i |> sum) == 0
+end
+
+
+
 
 
 length.(h_rand.he2v)
-hh.
-v_id = 3
+#this gives error
+hh.v_id = 3
+size(h_rand)
+
+function fill_HRA_dir(h::Hypergraph)
+    hradir = Matrix{Union{Nothing,Float64}}(undef,nhv(h), nhv(h))
+    for i in 1:nhv(h)
+        for j in 1:nhv(h)
+            hradir[i,j] = HRA_direct(h, i, j)
+        end
+        hradir[i,i] = 0.
+    end
+    return hradir
+end
+
+function fill_HRA(h::Hypergraph)
+    hradir = Matrix{Union{Nothing,Float64}}(undef, nhv(h), nhv(h))
+    for i in 1:nhv(h)
+        for j in 1:nhv(h)
+            hradir[i, j] = HRA(h, i, j)
+        end
+        hradir[i, i] = 0.0
+    end
+    return hradir
+end
+
+function fill_HRA(h::myHyperGraph)
+    hradir = Matrix{Union{Nothing,Float64}}(undef, h.v_id, h.v_id)
+    for i in 1:h.v_id
+        for j in 1:h.v_id
+            #@show i, j
+            hradir[i, j] = HRA(h, i, j)
+        end
+        hradir[i, i] = 0.0
+    end
+    return hradir
+end
+
+@time Hra_direct = fill_HRA_dir(Hcitecoref);# this is only HRA_direct
+@time hra = fill_HRA(Hcitecoref); # much slower 
+@time hramat = fill_HRA(HG); # this is more than 6 times faster 
+
+@time HG = myHyperGraph(Hcitecoref)
+
 function h_Neighbours_mat(hg::Hypergraph, v_id::Int)
     # this is slower than h_Neighbours
     neigh_hedges = findall(==(1), hg[v_id, :])
@@ -36,89 +202,18 @@ function h_Neighbours_mat(hg::Hypergraph, v_id::Int)
 end
 
 
+new_Hedges = create_new_hyperedge(hh, n=1)
+new_Hedges = create_new_hyperedge(HG, n=100)
 
 
+@time NHAS(HG, 2,1)  # faster
+@time NHAS(Hcitecoref, 2, 1)
 
-hh = Incidence(h_rand) #( replace(h_rand, nothing=>0., true=>1.) |> Matrix)
-h = h_rand
-D = nodes_degree_mat(h)
-
-E = hyperedges_degree_mat(h)
-W = hyper_weights(h)
-A = h * W * h' - D
-Ei = E - I
-
-DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in 1:size(Ei, 1)] |> Diagonal)
-sum(DeInv * Ei)
-
-A_ndp = h * W * DeInv * h' - D
-
-dim1 = size(a_rand_hg, 1)
-hradir = Matrix{Union{Nothing,Float64}}(undef, dim1, dim1);
-for i in 1:dim1
-    for j in 1:dim1
-        hradir[i, j] = HRA_direct(a_rand_hg, i, j)
-
-
-    end
-end
-hradir
-
-
-aa = myHyperGraph([1, 2, 5], [5, 2, 0, 8])
-
-
-
-
-
-
-
-
-
-using MAT
-hpradatadir = projectdir("HyperedgePrediction/dataset_utils/Datasets")
-
-citeseer1 = matread(joinpath(hpradatadir, "citeseer_coreference.mat"))
-citeseer2 = matread(joinpath(hpradatadir, "citeseer_cocitation.mat"))
-# -
-
-c1 = citeseer1["S"] # this is just a shortcut
-c2 = citeseer2["S"]
-
-
-Hcitecoref = Hypergraph{Float64}(size(c1)...);  # size(c1) = (1299, 626)
-nonzeros = findall(!=(0.0), c1) # c1 is a swallow copy of citeseer1["S"]
-Hcitecoref[nonzeros] .= 1.0;
-
-
-
-@time for i in 1:10
-    ss = h_Neighbours_mat(Hcitecoref, i)
-    #ss2 = h_Neighbours(Hcitecoref, i)
-    #@assert setdiff(ss2,ss) == Set{Any}() 
-    #if length(ss) != 0 || length(ss) != 0
-    #@show i, ss, ss2
-    #end
-end
-# The distribution of hyperdge |e|
-# hydist = hyperedge_dist(Hcitecoref).vect
-# size(hydist), typeof(hydist)
-# histogram(hydist, bins=minimum(hydist):(maximum(hydist)+1), yscale=:log10,normalize=:probability) 
-
+@time calc_NHAS(Hcitecoref, new_Hedges[1]) |> sum
+@time calc_all_NHAS(HG, new_Hedges[1]) |> sum # much faster
 
 
 using StatsBase
-#plot(ecdf(hydist))
-
-
-
-
-# But in the case of nodes we are interested in "preferential
-# attachment, i.e., nodes with a higher degree are more
-# likely to form new links. Following this, once the cardinality d of new hyperedge is determined, we choose
-# the first member of the hyperedge with probability
-# proportional to the node degrees.''
-#
 
 # +
 nodedist = length.(Hcitecoref.v2he)
@@ -155,15 +250,15 @@ begin
     Random.seed!(3)
     tott = 0
     totheg = 0
-    tot_n = 10
+    tot_n = 1000
     tot_nodes = 0
-    nn = 1
+    nn = 10
     part_idx = 600
     onefold = size(Hcitecoref)[2] - part_idx
     for ll in 1:nn
         tt = @elapsed begin
             setOfEdges = []
-            hg = Hypergraph(Hcitecoref[:, 1:part_idx])
+            hg = Hcitecoref[:, 1:part_idx] |> Hypergraph |> myHyperGraph
             new_Hedges = create_new_hyperedge(hg, n=onefold)
             foreach(new_Hedges) do x
                 h_edge_in_cont(setOfEdges, x)
@@ -194,7 +289,18 @@ size.(kf)
 size.(kf[1]), size.(kf[2])
 size(Hcitecoref)
 
+HG
+foldem(HG, fold_k)
 
-foldem(Hcitecoref, fold_k)
+
+v=[1, 2, 5, 3,3, 4, 5]
+ff=[1,3]
+found = findall(x->x ∈ ff, v)
 
 
+
+
+@debug "Verbose debugging information.  Invisible by default"
+@info "An informational message"
+@warn "Something was odd.  You should pay attention"
+@error "A non fatal error occurred"
