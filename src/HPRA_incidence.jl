@@ -62,6 +62,10 @@ function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real
 
 end
 
+##############################################
+
+node_density(hh::myHyperGraph) = sum(hh.H) / (hh.e_id * hh.v_id)
+node_density(h::Hypergraph) = sum(Incidence(h)) / (length(h.he2v) * length(h.v2he))
 
 ##############################################
 
@@ -92,7 +96,7 @@ end
 ###############################################
 function hyper_weights(h)
     """
-    Diagonal matrix of weights. We currently set them all to 1.hyperedge degrees 
+    Diagonal matrix of weights. For teh time being, just set them all equal to 1
     """
     Diagonal(ones(size(h, 2)))
 end
@@ -168,6 +172,7 @@ function choose_new_vertex(hg, new_he)::Int64
     # if (length(new_he.nodes) % 10) == 0        
     #     @printf "length of nodes %i Chose node  %i w/ a score of %.2f \n" length(new_he.nodes) newV_idx scores[newV_idx]
     # end
+
 
     # This is added to the new hyperegde and to new_he ecdfplot 
     #new_he.nodes[newV_idx] = 1 # this may be a name or smtng else i dont know what
@@ -428,9 +433,9 @@ find_all_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dim
 
 #############################################################################
 
-function find_disconnected_he(hyperg::myHyperGraph, cv_partition)
+function find_connected_he(hyperg::myHyperGraph, cv_partition)
     """
-        For a given partition cv_partition = (kfold, onefold) of myHyperGraph hyperg, check hyperg[kfold] (ie E^T)
+        For a given partition cv_partition = (kfold, onefold) of myHyperGraph hyperg, check hyperg.H[kfold] (ie E^T)
         for rows (ie nodes) that sum to 0. These are nodes that do not exist in E^M, 
         but should exist in hyperg[onefold]. 
         We remove the hyperedges that contain these nodes from hyperg[onefold].
@@ -441,6 +446,7 @@ function find_disconnected_he(hyperg::myHyperGraph, cv_partition)
     finder = find_all_empty_nodes(hyperg.H[:, kfold])
     isempty_finder = isempty(finder)
     @debug "is empty finder: $(Tuple(finder)) -> $(isempty_finder)"
+
 
 
     if isempty_finder
@@ -456,23 +462,24 @@ function find_disconnected_he(hyperg::myHyperGraph, cv_partition)
     foreach(finder) do x
         #sanity: finder must be (n,1) a vector.
         if x[2] != 1
-            throw("Error in find_disconnected_he. Exiting.")
+            throw("Error in find_connected_he. Exiting.")
             exit(1)
         end
 
         non_zero_hyperedges = @pipe replace(hyperg.H[x[1], onefold], nothing => 0) |> findall(!=(0), _)
-        #println("Node $(x[1]) is zero. Checking E^M at $(non_zero_hyperedges)")
+        #println("Node $(x[1]) is zero in E^T. Checking E^M at $(non_zero_hyperedges)")
         push!(discarded_he, non_zero_hyperedges...)
         #display(hyperg[:, onefold])
 
     end
 
     # this HE set is discarded
-    discarded_he |> unique! |> sort!
+    #discarded_he |> unique! |> sort!
+    kept_he = setdiff(1:length(onefold), discarded_he)
 
-    @info "Hyperedges #$(onefold[discarded_he]) ------   Discarded"
-    onefold_copy = (onefold |> collect |> deepcopy)
-    return deleteat!(onefold_copy, discarded_he)
+    @debug "Hyperedges #$(onefold[discarded_he]) discarded ------   we keep $(onefold[kept_he])"
+    #onefold_copy = (onefold |> collect |> deepcopy)
+    return onefold[kept_he]
 
 end
 ################################################3
@@ -489,39 +496,40 @@ function create_mat(new_Hedges)
 end
 
 ################################################3
-function calc_av_F1score_matrix(Eᴾ::Matrix{T}, Eᴹ::Matrix{T}) where {T<:Real}
+function calc_av_F1score_matrix(Eᴾ::Matrix{Union{Nothing,T}}, Eᴹ::Matrix{Union{Nothing,U}}) where {T<:Real,U<:Real}
     """
-        The 2 inputs are nodes × h_edges matrices. 
-        Eᴾ is a vector of hyperEdges produced by simulation, 
-        while Eᴹ is a view of the hypergraph, hyperg[:, onefold], the 'missing' edges,  
-        where onefold = k:(k+h_dim) for some k.
-    """
+    The 2 inputs are nodes × h_edges matrices. 
+    Eᴾ is a vector of hyperEdges produced by simulation, 
+    while Eᴹ is a view of the hypergraph, hyperg[:, onefold], the 'missing' edges,  
+    where onefold = k:(k+h_dim) for some k.
+"""
     try
-        @assert size(Eᴹ) == size(Eᴾ)
+        @assert size(Eᴹ)[1] == size(Eᴾ)[1]
     catch AssertionError
-        @error "size(Eᴹ)=$(size(Eᴹ)), size(Eᴾ)=$(size(Eᴾ)). Exiting"
+        @error "size(Eᴹ)=$(size(Eᴹ)), size(Eᴾ)=$(size(Eᴾ)). Not the same no of nodes. Exiting"
         exit()
     end
 
 
     Eᴹ0 = replace(Eᴹ, nothing => 0.0)
-    v_dim = size(Eᴹ)[2]
-    fscore_matrix = zeros(Float64, v_dim, v_dim)
-    fscore_matrixReverse = zeros(Float64, v_dim, v_dim)
+    m_dim = size(Eᴹ)[2]
+    p_dim = size(Eᴾ)[2]
+    fscore_matrix = zeros(Float64, m_dim, p_dim)
+    #fscore_matrixReverse = zeros(Float64, v_dim, v_dim)
 
-    for j in 1:v_dim
-        for i in 1:v_dim
+    for j in 1:p_dim
+        for i in 1:m_dim
 
             fscore_matrix[i, j] = m(Eᴹ0[:, i], Eᴾ[:, j])
-            fscore_matrixReverse[i, j] = m(Eᴾ[:, i], Eᴹ0[:, j])
-            fscore_matrix[j, i] == 0.0 ? nothing : @info "fscore_matrix[$i, $j] = $(fscore_matrix[j, i])"
+            #fscore_matrixReverse[i, j] = m(Eᴾ[:, i], Eᴹ0[:, j])
+            fscore_matrix[i, j] == 0.0 ? nothing : @info "fscore_matrix[$i, $j] = $(fscore_matrix[i, j])"
             (sum(Eᴹ0[:, i]) != 0.0 && sum(Eᴾ[:, j]) != 0.0) ? nothing : @info "[$i, $j], sum(Eᴹ0[:, i])= $(sum(Eᴹ0[:, i]))  sum(Eᴾ[:, j])=$(sum(Eᴾ[:, j]))"
         end
     end
     #display(fscore_matrix)), 
-    avg_F1 = 0.5 * (argmaxg_prime_sum(fscore_matrix) + argmaxg_sum(fscore_matrix))
+    avg_F1 = 0.5 * (argmaxg_prime_mean(fscore_matrix) + argmaxg_mean(fscore_matrix))
     println("average F1 ", avg_F1)
-    return avg_F1, fscore_matrix, fscore_matrixReverse
+    return avg_F1 #, fscore_matrix #, fscore_matrixReverse
 end
 
 #############################################################################
@@ -534,31 +542,40 @@ function foldem(hyperg::myHyperGraph, fold_k)
     There may exist cases where E^T does not contain some node, ie contains empty hyperedges, 
     The relevant hyperedges (including the nodes) are removed from E^M
     """
-    cv = collect(kfolds(hyperg.e_id, fold_k))
+    cv = collect(kfolds(hyperg.e_id, fold_k)) # breaks  1:e_id in fold_k grpups for cross validation
 
-    n_loops = (cv[1] .|> length |> length)
+    #fscore_matrix, fscore_matrixReverse = Float64[], Float64[]
+    #n_loops = (cv[1] .|> length |> length)
     av_f1_scores = []
     for (k, j) in zip(cv[1], cv[2])
         # k is E^T, the training set and j the 'missing' set, E^M
         # check E^M for disconnected vertices. Return either the folded 
         # iterator if no such disconnected nodes are found, or 
         # the corrected iterator over which we are going to cross validate
-        onefold = find_disconnected_he(hyperg, (k, j))
-        @debug onefold
+        kept_hedges = find_connected_he(hyperg, (k, j))
+        if kept_hedges == []
+            continue # no hyperedges can be predicted in this fold
+        end
+        @debug onefold, kept_hedges
+        #kept_he =
         hhg = replace(hyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
 
         # Now create new h-edges for the kfold E^T hgraph, that later we will 
         # compare to onefold E^M edges. 
 
-        new_Hedges = create_new_hyperedge(hhg, n=length(onefold))
+        #new_Hedges = create_new_hyperedge(hhg, n=length(kept_hedges))
+        new_Hedges = create_new_hyperedge(hhg, n=length(j))
 
         new_Hedges_mat = create_mat(new_Hedges)
-        fs = calc_av_F1score_matrix(new_Hedges_mat, hyperg.H[:, onefold])
+        fs = calc_av_F1score_matrix(new_Hedges_mat, hyperg.H[:, kept_hedges])
         push!(av_f1_scores, fs)
         println("fs = $(fs)")
         println("###"^20)
+        #print(stdout, ">>>> ")
+        #read(stdin, 1)
+
     end
-    return av_f1_scores
+    return av_f1_scores #, fscore_matrix, fscore_matrixReverse
 end
 
 

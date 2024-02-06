@@ -764,9 +764,11 @@ function calc_av_F1score_matrix_1(Eᴾ, Eᴹ)
 end
 
 ##############################################################333
-function argmaxg_sum(fscore_matrix)
+function argmaxg_mean(fscore_matrix)
     """ 
     the best matching missing hyperedge to each predicted hyperedge 
+    !!! For different dimensions of fscore_matrix, the result of argmax_mean and 
+    argmax_prime_mean are not statistically equivalent. See function test_argmax_equiv below
     """
     # first index is predicted, second missing
     # here we sum over predicted. 
@@ -774,7 +776,7 @@ function argmaxg_sum(fscore_matrix)
 
 end
 
-function argmaxg_prime_sum(fscore_matrix)
+function argmaxg_prime_mean(fscore_matrix)
     """ 
     the best-matching predicted hyperedge to each missing hyperedge
     """
@@ -786,3 +788,41 @@ function argmaxg_prime_sum(fscore_matrix)
     maximum(fscore_matrix, dims=1) |> mean
 
 end
+
+# try for n > 100000
+function test_argmax_equiv(n)
+    means = test_argmax_equiv_first(n)
+    for (k, v) in means
+        println("$k mean $(mean(v)) ") # std $(std(v))")
+    end
+    println("The same numbers distributed in different dimension matrices do not have the same means")
+
+end
+
+function test_argmax_equiv_first(n)
+
+    function make_means()
+        rvect = rand(1:100, 100)
+        a = reshape(rvect, (2, 50))
+        b = reshape(rvect, (10, 10))
+        ad1 = maximum(a, dims=1) |> mean
+        ad2 = maximum(a, dims=2) |> mean
+        bd1 = maximum(b, dims=1) |> mean
+        bd2 = maximum(b, dims=2) |> mean
+        return (ad1, ad2, bd1, bd2)
+    end
+
+    means = Dict(["2_50_dims=1" => [], "2_50_dims=2" => [], "10_10_dims=1" => [], "10_10_dims=2" => []])
+    foreach(1:n) do x
+        x = make_means()
+
+        push!(means["2_50_dims=1"], x[1])
+        push!(means["2_50_dims=2"], x[2])
+        push!(means["10_10_dims=1"], x[3])
+        push!(means["10_10_dims=2"], x[4])
+
+    end
+    return means
+
+end
+

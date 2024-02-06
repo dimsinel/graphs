@@ -12,59 +12,126 @@ begin
     # --- or
     h_rand = random_preferential_model(7, 0.1)
     @show size(h_rand)
+    h_rand[5:7, 1:(end-5)] .= nothing
     a_rand_hg = (replace(h_rand, true => 1) |> Hypergraph)
     display(a_rand_hg)# @show find_empty_nodes(a_rand_hg)
-    # +
+
+
     hh = myHyperGraph(h_rand)
     A(hh)
     A_ndp(hh)
     Incidence(h_rand)
 end
 
-
-#
+h_rand
 
 begin
     using MAT
     hpradatadir = projectdir("HyperedgePrediction/dataset_utils/Datasets")
+    matfiles = Dict()
+    alphabetic = ['j', 'k', 'b', 'a', 'd', 'c', 'e']
+    matfiles = Dict(alphabetic .=> readdir(hpradatadir,))
 
-    citeseer1 = matread(joinpath(hpradatadir, "citeseer_coreference.mat"))
-    citeseer2 = matread(joinpath(hpradatadir, "citeseer_cocitation.mat"))
-    coracocite = matread(joinpath(hpradatadir, "cora_cocitation.mat"))
-    # -
-    c1 = citeseer1["S"] # this is just a shortcut
-    c1 = citeseer2["S"]
-    c1 = coracocite["S"]
+    function readfilename(hpradatadir, f)
+        matread(joinpath(hpradatadir, f))["S"]
+    end
+end
+#= 
+matfiles
+Dict{Char, String} with 7 entries:
+  'j' => "aminer_cocitation.mat"
+  'a' => "citeseer_coreference.mat"
+  'd' => "cora_cocitation.mat"
+  'k' => "aminer_coreference.mat"
+  'c' => "cora_coreference.mat"
+  'e' => "dblp.mat"
+  'b' => "citeseer_cocitation.mat"
+=#
+begin
+    c1 = readfilename(hpradatadir, matfiles['a'])
 
     Hcitecoref = Hypergraph{Float64}(size(c1)...)  # size(c1) = (1299, 626)
     nonzeros = findall(!=(0.0), c1) # c1 is a swallow copy of citeseer1["S"]
     Hcitecoref[nonzeros] .= 1.0
-    HG = myHyperGraph(Hcitecoref)
+end
+HG = myHyperGraph(Hcitecoref)
+
+
+begin
+    hyperg = Hcitecoref #h_rand
+    myhyperg = HG #hh
+    fold_k = 5
+
+    #= kf = kfolds(size(hyperg)[2], fold_k)
+    size.(kf)
+    size.(kf[1]), size.(kf[2])
+    size(hyperg) =#
+    av_f1 = foldem(myhyperg, fold_k)
+
 end
 
+@info "length av_fi: $(length(av_f1)). Mean av_f1 $(round(mean(av_f1),digits=3)) ± $(round(std(av_f1),digits=3))"
+# (a)  length av_fi: 5. Mean av_f1 0.183 ± 0.014
+# (a)  length av_fi: 10. Mean av_f1 0.112 ± 0.024
 
-fold_k = 10
-kf = kfolds(size(Hcitecoref)[2], fold_k)
-size.(kf)
-size.(kf[1]), size.(kf[2])
-size(Hcitecoref)
-av_f1 = foldem(HG, fold_k)
+# (b)  length av_fi: 4. Mean av_f1 0.244 ± 0.034  (The first of 5 kfolds is 0)
+# (b)  length av_fi: 10. Mean av_f1 0.188 ± 0.053
 
-@info "mean av f1 after $fold_k folds, $(meanav_f1)()"
+# (c)  length av_fi: 5. Mean av_f1 0.132 ± 0.011
+# (c)  length av_fi: 10. Mean av_f1 0.073 ± 0.02
+
+# (d)  length av_fi: 5. Mean av_f1 0.239 ± 0.026
+# (d)  length av_fi: 10. Mean av_f1 0.176 ± 0.033
+
+# (e)   length av_fi: 5. Mean av_f1 0.197 ± 0.011
 
 
-nn=40
-HHG = Hcitecoref[:,1:(end-nn)] |> Hypergraph |> myHyperGraph
+exit()
+
+cv = collect(kfolds(myhyperg.e_id, fold_k))
+
+#n_loops = (cv[1] .|> length |> length)
+av_f1_scores = []
+(k, j) = collect(zip(cv[1], cv[2]))[1]
+# k is E^T, the training set and j the 'missing' set, E^M
+# check E^M for disconnected vertices. Return either the folded 
+# iterator if no such disconnected nodes are found, or 
+# the corrected iterator over which we are going to cross validate
+onefold = find_connected_he(myhyperg, (k, j))
+#miss =  
+@info onefold
+hhg = replace(myhyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
+
+# Now create new h-edges for the kfold E^T hgraph, that later we will 
+# compare to onefold E^M edges. 
+
+new_Hedges = create_new_hyperedge(hhg, n=length(j))
+
+new_Hedges_mat = create_mat(new_Hedges)
+
+fs = calc_av_F1score_matrix(new_Hedges_mat, myhyperg.H[:, onefold])
+push!(av_f1_scores, fs)
+println("fs = $(fs)")
+println("###"^20)
+
+
+
+
+
+
+
+nn = 40
+HHG = Hcitecoref[:, 1:(end-nn)] |> Hypergraph |> myHyperGraph
 begin
     new_Hedges = create_new_hyperedge(HHG, n=nn)
     Ep = create_mat(new_Hedges) .|> Int64
     Em = Hcitecoref[:, (end-nn+1):end] |> Hypergraph |> myHyperGraph
     EMb = Em.H .|> Int64
-    a,b,c = calc_av_F1score_matrix(Ep, EMb)
-   
+    a, b, c = calc_av_F1score_matrix(Ep, EMb)
+
     sum(b), sum(c)
 end
-    argmaxg_prime_sum(b)
+argmaxg_prime_sum(b)
 argmaxg_sum(b)
 
 
@@ -76,20 +143,20 @@ exit()
 new_Hedges = create_new_hyperedge(HG, n=1000)
 # 
 histogram(map(x -> length(x.nodes), new_Hedges))
-nodedist =[]
-foreach(new_Hedges) do x 
+nodedist = []
+foreach(new_Hedges) do x
     push!(nodedist, keys(x.nodes)...)
 end
 nds = unique(nodedist) |> sort
 # nds does not contain all nodes 
-missing_nodes = setdiff(1:1299,nds)
+missing_nodes = setdiff(1:1299, nds)
 # why? 
 missing_node_degs = Dict()
 for i in missing_nodes
     missing_node_degs[i] = sum(HG.H[i, :])
     @show sum(HG.H[i, :])
 end
-count(==(1),values(missing_node_degs))
+count(==(1), values(missing_node_degs))
 count(==(2), values(missing_node_degs))
 count(==(3), values(missing_node_degs))
 #@assert sum(HG.H[i,:]) == 1
@@ -150,12 +217,12 @@ hh.v_id = 3
 size(h_rand)
 
 function fill_HRA_dir(h::Hypergraph)
-    hradir = Matrix{Union{Nothing,Float64}}(undef,nhv(h), nhv(h))
+    hradir = Matrix{Union{Nothing,Float64}}(undef, nhv(h), nhv(h))
     for i in 1:nhv(h)
         for j in 1:nhv(h)
-            hradir[i,j] = HRA_direct(h, i, j)
+            hradir[i, j] = HRA_direct(h, i, j)
         end
-        hradir[i,i] = 0.
+        hradir[i, i] = 0.0
     end
     return hradir
 end
@@ -206,7 +273,7 @@ new_Hedges = create_new_hyperedge(hh, n=1)
 new_Hedges = create_new_hyperedge(HG, n=100)
 
 
-@time NHAS(HG, 2,1)  # faster
+@time NHAS(HG, 2, 1)  # faster
 @time NHAS(Hcitecoref, 2, 1)
 
 @time calc_NHAS(Hcitecoref, new_Hedges[1]) |> sum
@@ -293,9 +360,9 @@ HG
 foldem(HG, fold_k)
 
 
-v=[1, 2, 5, 3,3, 4, 5]
-ff=[1,3]
-found = findall(x->x ∈ ff, v)
+v = [1, 2, 5, 3, 3, 4, 5]
+ff = [1, 3]
+found = findall(x -> x ∈ ff, v)
 
 
 
@@ -304,3 +371,24 @@ found = findall(x->x ∈ ff, v)
 @info "An informational message"
 @warn "Something was odd.  You should pay attention"
 @error "A non fatal error occurred"
+
+
+function rrr()
+    a = rand(1:100, 100)
+    a = reshape(a, (2, 50))
+    d1 = maximum(a, dims=1) |> mean
+    d2 = maximum(a, dims=2) |> mean
+    return d1, d2
+end
+
+rrr()
+scatter([rrr() for _ in 1:100000])
+d1 = []
+d2 = []
+foreach(1:1000) do x
+    x = rrr()
+    push!(d1, x[1])
+    push!(d2, x[2])
+end
+mean(d1), mean(d2)
+std(d1), std(d2)
