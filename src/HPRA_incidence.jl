@@ -2,21 +2,28 @@ using SimpleHypergraphs
 import Graphs
 using LinearAlgebra
 using SparseArrays
+using StaticArrays
+#using Tullio
 
+#mult(M, Q) = @tullio P[x, y] := M[x, c] * Q[y, c]  # sum over c ∈ 1:7 -- matrix multiplication
 
+# a parameter needed for tuning reasons
+const global size_of_change_2_sparse = 1_000_000
 
 # convenince struct 
-struct myHyperGraph
+struct myHyperGraph{Static, Sparse} 
     e_id::Int64                          # n of hyperedges (ie columns)
-    v_id::Int64                          # n of nodes (rows)
-    H::Matrix{Union{Nothing,Int64}}      # Incidence Matrix
+    v_id::Int64                          # n of nodes (rows)g
+    H::AbstractMatrix{Int64}            # Incidence Matrix
     nodes::Diagonal{Int64}               # D_v ∈ R^{v_id × v_id} the diagonal matrix containing node degrees, 
     h_edges::Diagonal{Int64}             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
     weights::Diagonal{Float64}           # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
     v_neighbours::Dict{Int64,Set{Int64}} # the set of neighbours for each node
-    Andp::Matrix{Float64}
+    Andp::AbstractMatrix{Float64}       # A_ndp is equivalent to HRAdirect 
 end
 
+
+## ___________________________________________________
 myHyperGraph(e, v) = myHyperGraph(e, v,
     zeros(Int64, v_id, e_id),
     Diagonal(zeros(Int64, 1)),
@@ -25,6 +32,7 @@ myHyperGraph(e, v) = myHyperGraph(e, v,
     Dict{Int64,Set{Int64}}(),
     zeros(Float64, 1, 1)) # won't be used in this cstor, so leave it small
 
+## ___________________________________________________
 myHyperGraph(D::Diagonal{Int64}, E::Diagonal{Int64}) =
     myHyperGraph(size(E, 1),
         size(D, 1),
@@ -34,11 +42,11 @@ myHyperGraph(D::Diagonal{Int64}, E::Diagonal{Int64}) =
         Diagonal(ones(Float64, size(E, 1))),
         Dict{Int64,Set{Int64}}(),
         zeros(Float64, 1, 1))
-
+## ___________________________________________________
 function myHyperGraph(D::Vector{Int64}, E::Vector{Int64})
     myHyperGraph(Diagonal(D), Diagonal(E))
 end
-
+## ___________________________________________________
 function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real}}}}
 
     H = Incidence(h)
@@ -54,9 +62,39 @@ function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real
     end
 
     Ei = E - I
-    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in 1:size(Ei, 1)] |> Diagonal)
-    Andp = H * W * DeInv * H' - D
 
+    # The Inverse of Ei
+    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in eachindex(view(Ei, :, 1))] |> Diagonal)
+    @info """In myHyperGraph(h::T) 
+        Performing H * W * DeInv * H' - D, where
+        size(H) =     $(size(H)),          typeof(H) =     $(typeof(H))
+        size(W) =     $(size(W)),          typeof(W) =     $(typeof(W)),
+        size(DeInv) = $(size(DeInv)),      typeof(DeInv) = $(typeof(DeInv)),
+        size(D) =     $(size(D)),          typeof(D) =     $(typeof(D))
+    """
+
+
+    global size_of_change_2_sparse
+
+
+
+    Andp = getSizedMatrix(D)
+    display(Andp)
+    temporary = W * DeInv
+    @show isdiag(temporary)
+    Dtemp = Matrix{Float64}(undef, size(H, 1), size(temporary, 2))
+    #mul!(Dtemp, H, temporary)
+    @info "Dtemp $(size(Dtemp))"
+    #mul!(Dtemp, H, temporary, 1, 0)
+    #display(Dtemp)
+    #@show typeof(Andp), typeof(H), typeof(H'), typeof(temporary), typeof(Dtemp)
+    #Dtemp = Dtemp * H' - Dtemp
+    mul!(Andp, mul!(Dtemp, H, temporary, 1, 0), transpose(H), 1, -1)
+    #Andp = H * W * DeInv * H' - D
+    #display(Andp)
+    #display(Andp1)
+    #@assert sum(Andp) ≈ sum(Andp1)
+    #@info "diff $(sum(Andp - Andp1))"
     println("Hypergraph edges=$(eid), nodes=$(nid)")
     return myHyperGraph(eid, nid, H, D, E, W, d, Andp)
 
@@ -102,12 +140,35 @@ function hyper_weights(h)
 end
 
 ###############################################
+function getSizedMatrix{T,W}(D; ssize=size_of_change_2_sparse) where {T,W}
+    # T can ber Staticmatrix (immutable) or MMatrix (mutable)
+    # W Float64 or Int64
+    if length(D) < 100
+        # use mutable staticArrays 
+        return T{size(D)...}(W.(D))
+    elseif 100 <= length(D) < ssize
+        #normal Array
+        return Matrix(W.(D))
+    else
+        # sparse 
+        return sparse(W.(D))
+    end
+end
+################################################
 function Incidence(h)
 
-    return (replace(h, nothing => 0.0, true => 1.0) |> Matrix)
-
+    hh = (replace(h, nothing => 0.0, true => 1.0) |> Matrix)
+    # 
+    getSizedMatrix{SMatrix, Int64}(hh)
+    #global size_of_change_2_sparse
+    # if length(hh) < 100
+    #     return SMatrix{size(hh)...}(hh)
+    # elseif 100 <= length(hh) < size_of_change_2_sparse
+    #     return hh
+    # else
+    #     return sparse(hh)
+    # end
 end
-
 #const H(h) = Incidence(h)
 ###############################################
 
@@ -120,7 +181,7 @@ A(h::myHyperGraph) = h.H * h.weights * h.H' - h.nodes
 
 function A_ndp(h::myHyperGraph)
     Ei = h.h_edges - I
-    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in 1:size(Ei, 1)] |> Diagonal)
+    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in eachindex(view(Ei, :, 1))] |> Diagonal)
     return h.H * h.weights * DeInv * h.H' - h.nodes
 end
 
@@ -373,6 +434,23 @@ end
 HRA(h::myHyperGraph, x::Int, y::Int; α=0.5) = α * HRA_indirect(h, x, y) + (1 - α)h.Andp[x, y]
 
 ####################################################
+function HRA_Matrix(h::myHyperGraph; α=0.5)
+    """
+        Calculates all pairwise HRA values for h
+    """
+    m = Matrix{Float64}(undef, h.v_id, h.v_id) |> UpperTriangular
+    for i in 1:h.v_id
+        for j in i:h.v_id
+
+            m[i, j] = HRA(h, i, j, α=α)
+            @debug "HRA_Matrix: i= $i  j=$j   m[i, j]=$(m[i, j])"
+        end
+    end
+    return m
+end
+
+######################################################
+
 
 function NHAS(h::myHyperGraph, vertex::Int, e_id::Int)
     """Node-Hyperedge Attachment Score.
@@ -528,7 +606,7 @@ function calc_av_F1score_matrix(Eᴾ::Matrix{Union{Nothing,T}}, Eᴹ::Matrix{Uni
     end
     #display(fscore_matrix)), 
     avg_F1 = 0.5 * (argmaxg_prime_mean(fscore_matrix) + argmaxg_mean(fscore_matrix))
-    println("average F1 ", avg_F1)
+    @debug "average F1  $(avg_F1)"
     return avg_F1 #, fscore_matrix #, fscore_matrixReverse
 end
 
@@ -556,7 +634,7 @@ function foldem(hyperg::myHyperGraph, fold_k)
         if kept_hedges == []
             continue # no hyperedges can be predicted in this fold
         end
-        @debug onefold, kept_hedges
+        @debug kept_hedges
         #kept_he =
         hhg = replace(hyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
 

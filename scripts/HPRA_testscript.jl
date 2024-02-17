@@ -8,6 +8,7 @@ includet(srcdir("HPRA.jl"))
 includet(srcdir("HPRA_incidence.jl"))
 
 begin
+
     h_rand = random_model(7, 20)
     # --- or
     h_rand = random_preferential_model(7, 0.1)
@@ -20,7 +21,7 @@ begin
     hh = myHyperGraph(h_rand)
     A(hh)
     A_ndp(hh)
-    Incidence(h_rand)
+    Incidence(h_rand);
 end
 
 h_rand
@@ -48,13 +49,71 @@ Dict{Char, String} with 7 entries:
   'b' => "citeseer_cocitation.mat"
 =#
 begin
-    c1 = readfilename(hpradatadir, matfiles['a'])
+    c1 = readfilename(hpradatadir, matfiles['j'])
 
     Hcitecoref = Hypergraph{Float64}(size(c1)...)  # size(c1) = (1299, 626)
     nonzeros = findall(!=(0.0), c1) # c1 is a swallow copy of citeseer1["S"]
     Hcitecoref[nonzeros] .= 1.0
 end
+
+begin
+    h = Hcitecoref
+    H = Incidence(h)
+    D = nodes_degree_mat(h)
+    E = hyperedges_degree_mat(h)
+    eid = size(E, 1)
+    nid = size(D, 1)
+    W = hyper_weights(h)
+end
+begin
+    d = Dict{Int64,Set{Int64}}()
+    for i in 1:nid
+        d[i] = h_Neighbours(h, i)
+    end
+
+    Ei = E - I
+    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in eachindex(view(Ei, :, 1))] |> Diagonal)
+end
+
+begin
+    @show sizeof(H), size(H)
+    @show sizeof(D), size(D)
+
+    @show sizeof(E), size(E)
+    @show sizeof(W), size(W)
+    @show sizeof(DeInv), size(DeInv)
+end
+
+begin
+    Andp = sparse(Float64.(D))
+    temporary = W * DeInv
+    @show isdiag(temporary)
+    #Dtemp = Matrix{Float64}(undef, size(H, 1), size(temporary, 2))
+    Dtemp = spzeros(size(H, 1), size(temporary, 2))
+    Dtemp = H*temporary
+    Andp = Dtemp*H' - Andp
+end
+
+Andp
+HG = myHyperGraph(eid, nid, H, D, E, W, d, Andp)
+
 HG = myHyperGraph(Hcitecoref)
+
+function getSizedMatrix{T}(D; ssize=1000000) where
+
+    # T can ber Staticmatrix (immutable) or MMatrix (mutable)
+    # W Float64 or Int64
+    if length(D) < 100
+        # use mutable staticArrays 
+        return T{size(D)...}((D))
+    elseif 100 <= length(D) < ssize
+        #normal Array
+        return Matrix((D))
+    else
+        # sparse 
+        return sparse((D))
+    end
+end
 
 
 begin
@@ -71,6 +130,7 @@ begin
 end
 
 @info "length av_fi: $(length(av_f1)). Mean av_f1 $(round(mean(av_f1),digits=3)) ± $(round(std(av_f1),digits=3))"
+# Compare w/ 3rd col of Table 2
 # (a)  length av_fi: 5. Mean av_f1 0.183 ± 0.014
 # (a)  length av_fi: 10. Mean av_f1 0.112 ± 0.024
 
@@ -84,6 +144,31 @@ end
 # (d)  length av_fi: 10. Mean av_f1 0.176 ± 0.033
 
 # (e)   length av_fi: 5. Mean av_f1 0.197 ± 0.011
+
+
+
+
+m =HRA_Matrix(myhyperg)
+
+function HPRA_CHS(hh::myHyperGraph, fold_k)
+
+    cv = collect(kfolds(hh.e_id, fold_k)) # breaks  1:e_id in fold_k grpups for cross validation
+
+    av_f1_scores = []
+    for (k, j) in zip(cv[1], cv[2])
+        # k is E^T, the training set and j the 'missing' set, E^M
+        # check E^M for disconnected vertices. Return either the folded 
+        # iterator if no such disconnected nodes are found, or 
+        # the corrected iterator over which we are going to cross validate
+        kept_hedges = find_connected_he(hh, (k, j))
+        if kept_hedges == []
+            continue # no hyperedges can be predicted in this fold
+        end
+        @info kept_hedges
+    end
+end
+
+HPRA_CHS(myhyperg, 5)
 
 
 exit()

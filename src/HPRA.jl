@@ -315,8 +315,9 @@ end
 
 function HRA_indirect(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_size::Int=1)
     L"""
-        Inirect part of Hyper Resource Allocation.   
-        HRA_{indirect} (x, y) =  \sum_{z ∈N (x) ∩ N(y)} 
+        Indirect part of Hyper Resource Allocation.   
+        For nodes x, y,
+        HRA_{indirect} (x, y) =  \sum_{z ∈ N (x) ∩ N(y)} 
         HRA_{direct} (x,z) × \frac{1}{d(z)}  × HRA_{direct} (z, y) 
     """
 
