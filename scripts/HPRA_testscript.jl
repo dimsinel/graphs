@@ -56,7 +56,7 @@ begin
     Hcitecoref[nonzeros] .= 1.0
 end
 
-begin
+
     h = Hcitecoref
     H = Incidence(h)
     D = nodes_degree_mat(h)
@@ -64,7 +64,6 @@ begin
     eid = size(E, 1)
     nid = size(D, 1)
     W = hyper_weights(h)
-end
 begin
     d = Dict{Int64,Set{Int64}}()
     for i in 1:nid
@@ -85,50 +84,77 @@ begin
 end
 
 begin
-    Andp = sparse(Float64.(D))
-    temporary = W * DeInv
+    Andp = sparse(Float32.(D))
+    temporary =Float32.(W * DeInv)
     @show isdiag(temporary)
     #Dtemp = Matrix{Float64}(undef, size(H, 1), size(temporary, 2))
-    Dtemp = spzeros(size(H, 1), size(temporary, 2))
+    Dtemp = spzeros(Float32, size(H, 1), size(temporary, 2))
+    Dtemp = Matrix{Float32}(undef, size(H, 1), size(temporary, 2)) |> sparse_or_mutstat_mat
+   
+    @show typeof(Dtemp)
     Dtemp = H*temporary
+    @show  typeof(Dtemp)
     Andp = Dtemp*H' - Andp
 end
+# begin
+#     Andp1 = sparse(Float64.(D))
+#     Dtemp = Matrix{Float64}(undef, size(H, 1), size(temporary, 2)) |> sparse_or_mutstat_mat
+#     # Dtemp = H * temporary
+#     mul!(Dtemp, H, temporary, 1.0, 0)
+#     # @show typeof(Dtemp)
+#     # Andp = Dtemp * H' - Andp
+#     mul!(Andp1, Dtemp, transpose(H), 1.0, -1.0)
+# end
 
 Andp
-HG = myHyperGraph(eid, nid, H, D, E, W, d, Andp)
+HG1 = myHyperGraph(eid, nid, H, D, E, W, d, Andp)
 
 HG = myHyperGraph(Hcitecoref)
 
-function getSizedMatrix{T}(D; ssize=1000000) where
-
-    # T can ber Staticmatrix (immutable) or MMatrix (mutable)
-    # W Float64 or Int64
-    if length(D) < 100
-        # use mutable staticArrays 
-        return T{size(D)...}((D))
-    elseif 100 <= length(D) < ssize
-        #normal Array
-        return Matrix((D))
-    else
-        # sparse 
-        return sparse((D))
-    end
-end
-
 
 begin
-    hyperg = Hcitecoref #h_rand
-    myhyperg = HG #hh
+    hyperg = h_rand
+    #citecoref #h_rand
+    myhyperg = hh
     fold_k = 5
 
     #= kf = kfolds(size(hyperg)[2], fold_k)
     size.(kf)
     size.(kf[1]), size.(kf[2])
     size(hyperg) =#
-    av_f1 = foldem(myhyperg, fold_k)
+    # av_f1 = foldem(myhyperg, fold_k)
+
+
+
+
+    
+    cv = collect(kfolds(myhyperg.e_id, fold_k))
+    av_f1_scores = Float64[]
+end
+begin
+    (k,j) = (cv[1][1], cv[2][1])
+    # try this out:
+    hhyperg = deepcopy(hyperg)
+    #remove_hyperedge!(hhyperg, k)
 
 end
 
+#for (k, j) in zip(cv[1], cv[2])
+begin 
+    (k, j) = collect(zip(cv[1], cv[2]))[end]
+    kept_hedges = find_connected_he(myhyperg, (k, j))
+    hhg = 
+    if typeof(myhyperg.H) <: SparseMatrixCSC 
+        myhyperg.H[:, k]
+    else
+        replace(myhyperg.H[:, k], 0 => nothing)  |> myHyperGraph
+    end
+end
+#new_Hedges = create_new_hyperedge(hhg, n=length(kept_hedges))
+new_Hedges = create_new_hyperedge(hhg, n=length(j))
+ 
+
+length(av_f1)
 @info "length av_fi: $(length(av_f1)). Mean av_f1 $(round(mean(av_f1),digits=3)) ± $(round(std(av_f1),digits=3))"
 # Compare w/ 3rd col of Table 2
 # (a)  length av_fi: 5. Mean av_f1 0.183 ± 0.014
@@ -145,7 +171,7 @@ end
 
 # (e)   length av_fi: 5. Mean av_f1 0.197 ± 0.011
 
-
+exit()
 
 
 m =HRA_Matrix(myhyperg)

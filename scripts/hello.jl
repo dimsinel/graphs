@@ -330,14 +330,15 @@ sta = SMatrix{size(aa)...}([1 2; 3 4])
 
 function Arr(matr::AbstractMatrix{T}) where {T}
     m = nothing
-    if length(matr) < 65
-        m = SMatrix{size(matr)...}(matr)
-    elseif length(matr) < 100_000
-        m = matr
-    else
-        m = sparse(matr)
-    end
-    Arr{T}(m)
+    m =
+        if length(matr) < 65
+            SMatrix{size(matr)...}(matr)
+        elseif length(matr) < 100_000
+            matr
+        else
+            sparse(matr)
+        end
+    m
 end
 
 
@@ -350,9 +351,9 @@ function makearr(n, m, d)
     c = rand(coll, n, m)
 end
 
-a = makearr(200, 500, 0.1);
+a = makearr(20000, 5000, 0.051);
 aa = Arr(a)
-aa.a
+
 
 
 using Tullio, BenchmarkTools, LoopVectorization
@@ -370,13 +371,217 @@ b = Array(reshape(Int32.(1:2*2000*400), 400, 2000, 2));
 
 using LinearAlgebra, SparseArrays, StaticArrays
 
-abstract type AA{T, U} end
+abstract type AA{T,U<:AbstractArray} end
 
 
-struct Aa{T,U} 
+struct Aa{T,U<:AbstractArray} <: AA{T,U}
     a::T
     b::U
 
 end
-a1 = Aa{Matrix,Matrix}
+
+m1 = Matrix{Float64}(undef, 2, 3)
+m2 = Matrix{Int64}(undef, 2, 3)
+
+SM1 = sparse_or_static_mat(m1)
+MM1 = sparse_or_mutstat_mat(m2)
+
+a1 = Aa(SM1, MM1)
 a1.a
+m2 = spzeros(10, 2)
+m1 = MMatrix{2,3}(m1)
+a2 = Aa(m1, m2)
+
+
+size_of_change_2_sparse = 1_000_000
+function sparse_or_static_mat(h::Matrix{T}; ssize=size_of_change_2_sparse)::AbstractMatrix where {T<:Number}
+    if length(h) < 100
+        return SMatrix{size(h)...}(h)
+    elseif 100 <= length(h) < ssize
+        return h
+    else
+        return sparse(h)
+    end
+end
+
+function sparse_or_mutstat_mat(h::Matrix{T})::AbstractMatrix where {T<:Number}
+    if length(h) < 100
+        return MMatrix{size(h)...}(h)
+    else
+        return sparse(h)
+    end
+end
+
+abstract type foo{T,U<:AbstractArray} <: AbstractMatrix{T} end
+struct myfoo{T,U<:AbstractArray} <: foo{T,U}
+    e_id::Int64                          # n of hyperedges (ie columns)
+    v_id::Int64                          # n of nodes (rows)g
+    H::T
+    W::U
+end
+a = myfoo{Matrix{Int64},Matrix{Int64}}(1, 2, [1 2 3; 4 5 6], [1 0 1; 9 1 9])
+
+######################################################################
+using BenchmarkTools
+using SuiteSparseGraphBLAS, LinearAlgebra, SparseArrays
+# Standard arithmetic semiring (+, *) matrix multiplication
+s = sprand(Float64, 10000, 10000, 0.05);
+v = sprand(Float64, 10000, 1000, 0.1);
+@btime s * v # 912.469 ms (7 allocations: 152.61 MiB)
+#### 
+s = GBMatrix(s);
+v = GBMatrix(v);
+# Single-threaded
+@btime s * v # 398.856 ms (8 allocations: 231.33 MiB)
+#
+
+# Indexing
+s = sprand(Float64, 100000, 10000, 0.05); # 34.059 ms (12 allocations: 7.62 MiB)
+@btime s[1:10:end, end:-10:1]
+
+s = GBMatrix(s);
+@btime s[1:10:end, end:-10:1] # 6.480 ms (22 allocations: 7.61 MiB)
+
+
+A = GBMatrix([1, 1, 2, 2, 3, 4, 4, 5, 6, 7, 7, 7], [2, 4, 5, 7, 6, 1, 3, 6, 3, 3, 4, 5], [1:12...])
+aa = Matrix(A)
+aa * aa
+aa .^ aa 
+aa .^ aa - emul(A, A, ^) # elementwise exponent
+
+##########################################################
+using SparseArrays
+using LuxurySparse
+using BenchmarkTools
+
+pm = pmrand(7)  # a random permutation matrix
+id = IMatrix(3) # an identity matrix
+@benchmark kron(pm, id) # kronecker product
+
+Spm = pm |> SparseMatrixCSC  # convert to SparseMatrixCSC
+Sid = id |> SparseMatrixCSC
+@benchmark kron(Spm, Sid)    # compare the performance to the previous operation.
+
+spm = pm |> staticize        # convert to static matrix, notice that `id` is already static.
+@benchmark kron(spm, spm)    # compare performance
+@benchmark kron(pm, pm)
+
+###############################################################
+struct mySubHyperGraph <: myHyperGraph
+
+    
+    e_id::Int32                          # n of hyperedges (ie columns)
+    v_id::Int32                          # n of nodes (rows)
+    H::SubArray                              # Incidence Matrix
+    nodes::Diagonal               # D_v ∈ R^{v_id × v_id}     diagonal matrix containing node degrees, 
+    h_edges::Diagonal             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
+    weights::Diagonal             # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
+    v_neighbours::Dict{Int32,Set{Int32}} # the set of neighbours for each node
+    Andp:::SubArray  
+
+end
+
+function mySubHyperGraph(h::myHyperGraph, k::UnitRange, j::UnitRange)
+
+    v_id = h.v_id # remains the same
+    e_id = h.e_id - length(j)
+    H = view(h.H, :, k)
+
+end
+ ###############################################################
+struct z 
+    i::Int64
+    a::Matrix{Float64}
+end
+
+struct zz
+    i::Int64
+    a::SubArray{Float64}
+    function zz(i,a)  
+        new(i,view(a, 1:i,1:i))
+    end 
+end
+z1 = z(3,[1 2 3; 4 5 6; 7 8 9])
+zz1 = zz(2,z1.a)
+# z and zz are immutable, but Matices are mutable, so we can chamge them.
+zz1.a[1,1]=3
+# this changes z1.a
+@assert z1.a[1,1] == 3
+typeof(z1.a)
+typeof(zz1.a)
+###########################################################
+
+hyperedges = Vector{HyperEdge}()
+kfold =k
+# we sample E^T, ie for hyperedges not in J
+new_hedges_sizes(i) = sample(diag(hg.h_edges)[kfold], i)
+
+kfoldnodes = nodes_degree_mat(hg[:, k]) |> diag
+
+function first_nodes(i, nodes)
+
+    nodes_distribution = (nodes |> fweights)
+    return sample(1:hg.v_id, nodes_distribution, i)
+
+end
+
+
+#while length(hyperedges) < 1
+    # choose the degrees of the new hyperedges according to current h_edge degrees
+    new_hedge_size = new_hedges_sizes(1)
+    #@show new_hedge_size
+    # choose new first nodes according to current nodes degree  using Preferential Attachment
+    # we dont care about the current no of nodes, only their degrees, (should we use 'unique' here?)
+    first_node = first_nodes(1, kfoldnodes)[1]
+    #@show any(==(0), first_nodes) 
+    #sanity
+    #do this for n > 1000 to chech if node sampling was OK: d should be approx nodes_distribution
+    #= begin) # |> unique)
+    # we will sample according to this distribution, 
+    nodes_distribution = (nodes_distribution |> fw
+        ufn = unique(first_nodes)
+        fnode_distr = map(i -> count(==(i), first_nodes), ufn)
+        dd = Dict(zip(ufn, fnode_distr)) |> sort
+        norm = dd[1]
+        d = Vector{Float64}(undef, length(dd))
+        for (i, k) in dd
+            d[i] = dd[i] / norm * nodes_distribution[1]
+        end
+        @show unique(first_nodes), fnode_distr, nodes_distribution
+        @show d
+    end =#
+
+    # Create a new h-edge
+    # well, all of them are going to have the same hyperedge number, but it is immaterial here.
+    new_he = HyperEdge(hg.e_id + 1, Int64(hg.v_id), Dict([first_node => 1]), 1.0)
+
+    # Now we must add to each hyperedge, new_hedge_size-1 nodes.
+    # a loop over the needed number of elements in the new h-edge 
+    new_Vertex = 0
+    while length(new_he.nodes) < new_hedge_size[1]
+
+        new_Vertex = choose_new_vertex(hg, new_he)
+        if new_Vertex == 0
+            # something went wrong in the new vertex calculation. 
+            # Start again 
+            break
+        end
+        new_he.nodes[new_Vertex] = 1 # this may be a name or smtng else i dont know what
+        keys(new_he.nodes)
+    end
+    if new_Vertex == 0 # go back to the Start
+        continue
+    end
+
+    # add the new vertex
+    new_he.nodes[new_Vertex] = 1 # this may be a name or smtng else i dont know what
+
+    # double check: 
+    if new_he ∉ hyperedges
+        push!(hyperedges, new_he)
+    else
+        # ... again start this hyperedge from the start 
+        continue
+    end
+
+end
