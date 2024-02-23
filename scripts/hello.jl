@@ -221,9 +221,8 @@ L = levels(y)
 pdf(yhat, L)
 
 # point predictions:
-predict_mode(mach, Xnew)
+#predict_mode(mach, Xnew)
 
-?add_hyperedge
 
 
 

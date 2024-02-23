@@ -54,7 +54,7 @@ function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real
     end
 
     Ei = E - I
-    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in 1:size(Ei, 1)] |> Diagonal)
+    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in axes(Ei, 1)] |> Diagonal)
     Andp = H * W * DeInv * H' - D
 
     println("Hypergraph edges=$(eid), nodes=$(nid)")
@@ -120,7 +120,7 @@ A(h::myHyperGraph) = h.H * h.weights * h.H' - h.nodes
 
 function A_ndp(h::myHyperGraph)
     Ei = h.h_edges - I
-    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in 1:size(Ei, 1)] |> Diagonal)
+    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in axes(Ei, 1)] |> Diagonal)
     return h.H * h.weights * DeInv * h.H' - h.nodes
 end
 

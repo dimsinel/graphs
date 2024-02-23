@@ -7,6 +7,23 @@ using Distributions, StatsPlots
 using Printf
 using Folds
 ####################################################
+module HPRA
+
+export myHyperGraph, HyperEdge, SPL
+export A, Andp, calc_all_NHAS, calc_av_F1score_matrix, choose_new_vertex,
+    create_mat, create_new_hyperedge,
+    find_all_empty_nodes, find_connected_he, foldem
+h_edge_in_cont, HRA, HRA_direct, HRA_indirect,
+hyperedges_degree_mat, hyper_weights,
+Incidence, NHAS, node_density, nodes_degree_mat,
+includet("HPRA.jl")
+includet("HPRA_incidence.jl")
+
+end
+
+##########################################################
+
+
 using MLJ
 measures("FScore")
 
