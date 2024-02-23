@@ -465,43 +465,28 @@ Sid = id |> SparseMatrixCSC
 spm = pm |> staticize        # convert to static matrix, notice that `id` is already static.
 @benchmark kron(spm, spm)    # compare performance
 @benchmark kron(pm, pm)
+####################
 
-###############################################################
-struct mySubHyperGraph <: myHyperGraph
+using DrWatson
+@quickactivate "graphs"
 
-    
-    e_id::Int32                          # n of hyperedges (ie columns)
-    v_id::Int32                          # n of nodes (rows)
-    H::SubArray                              # Incidence Matrix
-    nodes::Diagonal               # D_v ∈ R^{v_id × v_id}     diagonal matrix containing node degrees, 
-    h_edges::Diagonal             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
-    weights::Diagonal             # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
-    v_neighbours::Dict{Int32,Set{Int32}} # the set of neighbours for each node
-    Andp:::SubArray  
+includet(srcdir("HPRA.jl"))
+includet(srcdir("HPRA_incidence.jl"))
 
-end
-
-function mySubHyperGraph(h::myHyperGraph, k::UnitRange, j::UnitRange)
-
-    v_id = h.v_id # remains the same
-    e_id = h.e_id - length(j)
-    H = view(h.H, :, k)
-
-end
  ###############################################################
-struct z 
-    i::Int64
+struct z{T} 
+    i::T
     a::Matrix{Float64}
 end
 
 struct zz
-    i::Int64
+    i
     a::SubArray{Float64}
-    function zz(i,a)  
-        new(i,view(a, 1:i,1:i))
+    function zz(i, a)
+        new(i, view(a, 1:i, 1:i))
     end 
 end
-z1 = z(3,[1 2 3; 4 5 6; 7 8 9])
+z1 = z{Int64}(3,[1 2 3; 4 5 6; 7 8 9])
 zz1 = zz(2,z1.a)
 # z and zz are immutable, but Matices are mutable, so we can chamge them.
 zz1.a[1,1]=3
@@ -579,9 +564,22 @@ end
     # double check: 
     if new_he ∉ hyperedges
         push!(hyperedges, new_he)
-    else
-        # ... again start this hyperedge from the start 
-        continue
-    end
+#     else
+#         # ... again start this hyperedge from the start 
+#         continue
+#     end
+
+ end
+
+################################3
+for i in 1:hh.v_id
+    a = sort(gethyperedges(h_rand, 1))
+    bb = sort(gethyperedges(hh, 1))
+
+    @assert keys(aa) == keys(bb)
+    #@show values(aa)
+    #@show values(bb)
+    #@assert 
+    @assert all(values(aa) .== (values(bb)))
 
 end

@@ -7,19 +7,19 @@ using Distributions, StatsPlots
 using Printf
 using Folds
 ####################################################
-module HPRA
+# module HPRA
 
-export myHyperGraph, HyperEdge, SPL
-export A, Andp, calc_all_NHAS, calc_av_F1score_matrix, choose_new_vertex,
-    create_mat, create_new_hyperedge,
-    find_all_empty_nodes, find_connected_he, foldem
-h_edge_in_cont, HRA, HRA_direct, HRA_indirect,
-hyperedges_degree_mat, hyper_weights,
-Incidence, NHAS, node_density, nodes_degree_mat,
-includet("HPRA.jl")
-includet("HPRA_incidence.jl")
+# export myHyperGraph, HyperEdge, SPL
+# export A, Andp, calc_all_NHAS, calc_av_F1score_matrix, choose_new_vertex,
+#     create_mat, create_new_hyperedge,
+#     find_all_empty_nodes, find_connected_he, foldem
+# h_edge_in_cont, HRA, HRA_direct, HRA_indirect,
+# hyperedges_degree_mat, hyper_weights,
+# Incidence, NHAS, node_density, nodes_degree_mat,
+# includet("HPRA.jl")
+# includet("HPRA_incidence.jl")
 
-end
+# end
 
 ##########################################################
 
@@ -210,29 +210,6 @@ function edge_degree(h::Hypergraph, e_id::Int) #; edge_size::Int = 1)
     return length(vs)
 end
 
-
-##################################################################3
-function h_Neighbours(h::Hypergraph, v_id::Int; n_commmon_edges::Int=1) # this is faster than v_neigh
-    """ a set containing the one-hop neighbors of node
-    v_id (nodes of hyperedges, v is part of). The size keyword argument 
-    returns the set of neighbors that share at least s edges with the given node, the default is 1.
-    """
-    eds = gethyperedges(h, v_id)
-    neighb = Set()
-    for (e, w) in eds
-        vs = getvertices(h, e)
-        #println(vs)
-        if length(vs) >= n_commmon_edges
-            for (v, ww) in vs
-                if v == v_id
-                    continue
-                end
-                push!(neighb, v)
-            end
-        end
-    end
-    return neighb
-end
 
 #####################################################################
 function h_edges(h::Hypergraph)

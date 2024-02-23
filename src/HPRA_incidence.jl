@@ -6,39 +6,47 @@ using SparseArrays
 
 
 # convenince struct 
-struct myHyperGraph
-    e_id::Int64                          # n of hyperedges (ie columns)
-    v_id::Int64                          # n of nodes (rows)
-    H::Matrix{Union{Nothing,Int64}}      # Incidence Matrix
-    nodes::Diagonal{Int64}               # D_v ∈ R^{v_id × v_id} the diagonal matrix containing node degrees, 
-    h_edges::Diagonal{Int64}             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
-    weights::Diagonal{Float64}           # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
-    v_neighbours::Dict{Int64,Set{Int64}} # the set of neighbours for each node
-    Andp::Matrix{Float64}
+abstract type myAbstractHyperGraph{T<:Number,U<:Number} end
+
+struct myHyperGraph{T<:Integer,U<:Real} <: myAbstractHyperGraph{T,U} # T=Int, U =Float
+    e_id::T                          # n of hyperedges (ie columns)
+    v_id::T                          # n of nodes (rows)
+    H::Matrix{U}                     # Incidence Matrix
+    nodes::Diagonal{T}               # D_v ∈ R^{v_id × v_id} the diagonal matrix containing node degrees, 
+    h_edges::Diagonal{T}             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
+    weights::Diagonal{U}          # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
+    v_neighbours::Dict{T,Set{T}} # the set of neighbours for each node
+    #Andp::Matrix{Float64}
 end
 
-myHyperGraph(e, v) = myHyperGraph(e, v,
-    zeros(Int64, v_id, e_id),
-    Diagonal(zeros(Int64, 1)),
-    Diagonal(zeros(Int64, 1)),
-    Diagonal(ones(Float64, 1)),
-    Dict{Int64,Set{Int64}}(),
-    zeros(Float64, 1, 1)) # won't be used in this cstor, so leave it small
+myHyperGraph{T,U}(e::T, v::T) where {T<:Number,U<:Number} =
+    myHyperGraph(e, v, [1.0 0.0; 0.0 1.0], Diagonal([1, 1]), Diagonal([1, 1]), Diagonal([1.0, 1.0]), Dict{T,Set{T}}())
+#zeros(U, 1, 1)) # won't be used in this cstor, so leave it small
 
-myHyperGraph(D::Diagonal{Int64}, E::Diagonal{Int64}) =
+# function myHyperGraph{T}(e::T, v::T) where {T<:Number, U <: Number}
+#     myHyperGraph(e::T, v::T,
+#         Matrix{T}(undef,2,2),
+#         Diagonal(ones(T, 2)),
+#         Diagonal(ones(U, 2)),
+#         Dict{T,Set{T}}())
+#         #zeros(U, 1, 1)) # won't be used in this cstor, so leave it small
+# end 
+
+function myHyperGraph{T,U}(D::Diagonal{T}, E::Diagonal{T}) where {T<:Number,U<:Number}
     myHyperGraph(size(E, 1),
         size(D, 1),
-        zeros(Int64, size(D, 1), size(E, 1)),
+        zeros(U, size(D, 1), size(E, 1)),
         D,
         E,
-        Diagonal(ones(Float64, size(E, 1))),
-        Dict{Int64,Set{Int64}}(),
-        zeros(Float64, 1, 1))
+        Diagonal(ones(U, size(E, 1))),
+        Dict{T,Set{T}}())
+    #zeros(Float64, 1, 1))
+end
 
 function myHyperGraph(D::Vector{Int64}, E::Vector{Int64})
     myHyperGraph(Diagonal(D), Diagonal(E))
 end
-
+# --------------------------------------------------------------------------------
 function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real}}}}
 
     H = Incidence(h)
@@ -53,23 +61,106 @@ function myHyperGraph(h::T) where {T<:Union{Hypergraph,Matrix{Union{Nothing,Real
         d[i] = h_Neighbours(h, i)
     end
 
-    Ei = E - I
-    DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in axes(Ei, 1)] |> Diagonal)
-    Andp = H * W * DeInv * H' - D
-
     println("Hypergraph edges=$(eid), nodes=$(nid)")
-    return myHyperGraph(eid, nid, H, D, E, W, d, Andp)
+    return myHyperGraph{Int64,Float64}(eid, nid, H, D, E, W, d)#, Andp)
+
+end
+##############################################
+function SimpleHypergraphs.gethyperedges(h::T, v_id) where {T<:myAbstractHyperGraph}
+
+    d = Dict{Int64,Bool}()
+    for i in eachindex(h.H[v_id, :])
+        if h.H[v_id, i] != 0
+            d[i] = Bool(h.H[v_id, i])
+        end
+        @debug "i=$i,val=$(val)"
+    end
+    return d
+end
+##############################################
+function SimpleHypergraphs.getvertices(h::T, e_id) where {T<:myAbstractHyperGraph}
+
+    d = Dict{Int64,Bool}()
+    for i in eachindex(h.H[:, e_id])
+        if h.H[i, e_id] != 0
+            d[i] = Bool(h.H[i, e_id])
+        end
+        @debug "i=$i,val=$(val)"
+    end
+    return d
+end
+##############################################
+
+struct mySubHyperGraph{T,U} <: myAbstractHyperGraph{T,U}
+
+    e_id                        # n of hyperedges (ie columns)
+    v_id                         # n of nodes (rows)
+    H::SubArray                             # Incidence Matrix
+    nodes::Diagonal              # D_v ∈ R^{v_id × v_id}     diagonal matrix containing node degrees, 
+    h_edges::Diagonal             # D_e ∈ R^{e_id × e_id}     diagonal matrix of hyperedge degrees 
+    weights::Diagonal             # D_w ∈ R^{e_id × e_id}     diagonal matrix of hyperedge weights
+    v_neighbours::Dict            # the set of neighbours for each node
+    #Andp:::SubArray  
 
 end
 
-##############################################
+function mySubHyperGraph(h::myHyperGraph, k::T) where {T<:Vector}
 
-node_density(hh::myHyperGraph) = sum(hh.H) / (hh.e_id * hh.v_id)
+    H = view(h.H, :, k)
+    D = nodes_degree_mat(H)
+    E = hyperedges_degree_mat(H)
+
+    eid = size(E, 1)
+    nid = size(D, 1)
+
+    # sanity 
+    @assert nid == h.v_id # must remain the same
+    @info "eid=$eid  h.e_id= $(h.e_id) length(k)=$(length(k)) size(H)=$(size(H))"
+    @assert eid == length(k)
+    W = hyper_weights(H)
+
+    d = Dict{Int64,Set{Int64}}()
+    for i in 1:nid
+        d[i] = h_Neighbours(h, i)
+    end
+
+    mySubHyperGraph{typeof(nid),eltype(H)}(eid, nid, H, D, E, W, d)
+
+end
+
+###########################################
+
+
+sgnode_density(hh::T) where {T<:myAbstractHyperGraph} = sum(hh.H) / (hh.e_id * hh.v_id)
 node_density(h::Hypergraph) = sum(Incidence(h)) / (length(h.he2v) * length(h.v2he))
 
 ##############################################
 
-function nodes_degree_mat(h)
+##################################################################3
+function h_Neighbours(h::T, v_id::Int; n_commmon_edges::Int=1) where {T} ## this is faster than v_neigh
+    """ a set containing the one-hop neighbors of node
+    v_id (nodes of hyperedges, v is part of). The size keyword argument 
+    returns the set of neighbors that share at least s edges with the given node, the default is 1.
+    As is, works for both myAbstractHyperGraphs AND Hypergrapgs
+    """
+    eds = gethyperedges(h, v_id)
+    neighb = Set()
+    for (e, w) in eds
+        vs = getvertices(h, e)
+        #println(vs)
+        if length(vs) >= n_commmon_edges
+            for (v, ww) in vs
+                if v == v_id
+                    continue
+                end
+                push!(neighb, v)
+            end
+        end
+    end
+    return neighb
+end
+######################################################
+function nodes_degree_mat(h::Hypergraph)
     """Diagonal matrix of node degrees. Practically the same as node_dist"""
 
     # This...
@@ -80,8 +171,20 @@ function nodes_degree_mat(h)
     # ...are the same
 
 end
+
+function nodes_degree_mat(H::T) where {T<:AbstractMatrix}
+    """Diagonal matrix of node degrees. Practically the same as node_dist"""
+
+    # This...
+    D = Base.mapreduce(x -> (x != (0) && !isnothing(x)), +, H, dims=2)
+    Diagonal([D...])
+    # and this...
+    #D = Diagonal(length.(h.v2he))
+    # ...are the same
+
+end
 ##############################################
-function hyperedges_degree_mat(h)
+function hyperedges_degree_mat(h::Hypergraph)
     """
     Diagonal matrix of hyperedge degrees. Practically the same as hyperedge_dist
     """
@@ -90,6 +193,18 @@ function hyperedges_degree_mat(h)
     # Diagonal([D...])
     #...and this
     D = Diagonal(length.(h.he2v))
+    # ..are the same
+end
+
+function hyperedges_degree_mat(H::T) where {T<:AbstractMatrix}
+    """
+    Diagonal matrix of hyperedge degrees. Practically the same as hyperedge_dist
+    """
+    #  # This
+    D = mapreduce(x -> x != (0) && !isnothing(x), +, H, dims=1)
+    Diagonal([D...])
+    #...and this
+    #D = Diagonal(length.(h.he2v))
     # ..are the same
 end
 
@@ -118,14 +233,17 @@ A(h::myHyperGraph) = h.H * h.weights * h.H' - h.nodes
 
 
 
-function A_ndp(h::myHyperGraph)
+function Andp(h::H) where {H<:myAbstractHyperGraph}
+    #Ei = E - I
+    #DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in axes(Ei, 1)] |> Diagonal)
+    #Andp = H * W * DeInv * H' - D
     Ei = h.h_edges - I
     DeInv = ([Ei[i, i] != 0.0 ? 1 / Ei[i, i] : 0.0 for i in axes(Ei, 1)] |> Diagonal)
     return h.H * h.weights * DeInv * h.H' - h.nodes
 end
 
-function A_ndp(h::Hypergraph)
-    h |> myHyperGraph |> A_ndp
+function Andp(h::Hypergraph)
+    h |> myHyperGraph |> Andp
 end
 
 ####################################################
@@ -258,7 +376,7 @@ end
 
 #############################################################
 
-function create_new_hyperedge(hg::myHyperGraph; n::Int64=1)
+function create_new_hyperedge(hg::T; n::Int64=1) where {T<:myAbstractHyperGraph}
 
 
     #create a vector to hold the output
@@ -336,9 +454,9 @@ function create_new_hyperedge(hg::myHyperGraph; n::Int64=1)
 end
 
 #########################################################################################
-HRA_direct(h::myHyperGraph, x::Int, y::Int) = h.Andp[x, y]
+HRA_direct(h::H, x::Int, y::Int) where {H<:myAbstractHyperGraph} = Andp(h)[x, y]
 ###--------------------------------------------------------------------------------------
-function HRA_indirect(h::myHyperGraph, x::Int, y::Int) # n_commmon_edges::Int=1, edge_size::Int=1)
+function HRA_indirect(h::H, x::Int, y::Int) where {H<:myAbstractHyperGraph} # n_commmon_edges::Int=1, edge_size::Int=1)
     L"""
         Inirect part of Hyper Resource Allocation.   
         HRA_{indirect} (x, y) =  \sum_{z ∈N (x) ∩ N(y)} 
@@ -353,14 +471,15 @@ function HRA_indirect(h::myHyperGraph, x::Int, y::Int) # n_commmon_edges::Int=1,
     #@show x, y
     common_nodes = h.v_neighbours[x] ∩ h.v_neighbours[y]
 
+    andp = Andp(h)
     hra_ind = 0.0
     for z in common_nodes
         if h.nodes[z, z] == 0
             continue
         end
         # Andp is HRA_direct as we know
-        temp = h.Andp[x, z] / h.nodes[z, z]
-        temp *= h.Andp[z, y]
+        temp = andp[x, z] / h.nodes[z, z]
+        temp *= andp[z, y]
 
         hra_ind += temp
 
@@ -370,11 +489,11 @@ function HRA_indirect(h::myHyperGraph, x::Int, y::Int) # n_commmon_edges::Int=1,
 end
 ##-------------------------------------------------------------
 
-HRA(h::myHyperGraph, x::Int, y::Int; α=0.5) = α * HRA_indirect(h, x, y) + (1 - α)h.Andp[x, y]
+HRA(h::H, x::Int, y::Int; α=0.5) where {H<:myAbstractHyperGraph} = α * HRA_indirect(h, x, y) + (1 - α)Andp(h)[x, y]
 
 ####################################################
 
-function NHAS(h::myHyperGraph, vertex::Int, e_id::Int)
+function NHAS(h::H, vertex::Int, e_id::Int) where {H<:myAbstractHyperGraph}
     """Node-Hyperedge Attachment Score.
     """
 
@@ -395,7 +514,7 @@ end
 
 ####################################################
 
-function NHAS(h::myHyperGraph, vertex::Int, h_edge::HyperEdge)
+function NHAS(h::H, vertex::Int, h_edge::HyperEdge) where {H<:myAbstractHyperGraph}
     """Node-Hyperedge Attachment Score.
     """
 
@@ -404,7 +523,7 @@ function NHAS(h::myHyperGraph, vertex::Int, h_edge::HyperEdge)
     for i in setdiff(keys(h_edge.nodes), [vertex])
 
         res += HRA(h, vertex, i)
-        #@show i, HRA(HG, vertex, i), res
+        @info i, HRA(HG, vertex, i), res
     end
     res /= length(h_edge.nodes)
 end
@@ -414,7 +533,7 @@ end
 
 ####################################################
 
-function calc_all_NHAS(h::myHyperGraph, new_he::HyperEdge{T}) where {T<:Number}
+function calc_all_NHAS(h::H, new_he::HyperEdge{T}) where {H<:myAbstractHyperGraph,T<:Number}
     """Node-Hyperedge Attachment Score calculated for a Hypergraph 
     and an hyperedge which is not part of it.
     """
@@ -433,7 +552,7 @@ find_all_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dim
 
 #############################################################################
 
-function find_connected_he(hyperg::myHyperGraph, cv_partition)
+function find_connected_he(hyperg::myAbstractHyperGraph, cv_partition)
     """
         For a given partition cv_partition = (kfold, onefold) of myHyperGraph hyperg, check hyperg.H[kfold] (ie E^T)
         for rows (ie nodes) that sum to 0. These are nodes that do not exist in E^M, 
@@ -496,7 +615,8 @@ function create_mat(new_Hedges)
 end
 
 ################################################3
-function calc_av_F1score_matrix(Eᴾ::Matrix{Union{Nothing,T}}, Eᴹ::Matrix{Union{Nothing,U}}) where {T<:Real,U<:Real}
+#function calc_av_F1score_matrix(Eᴾ::Array{Union{Nothing,T},2}, Eᴹ::Array{Union{Nothing,U},2}) where {T<:Real,U<:Real}
+function calc_av_F1score_matrix(Eᴾ::T, Eᴹ::U) where {T<:Matrix,U<:Matrix}
     """
     The 2 inputs are nodes × h_edges matrices. 
     Eᴾ is a vector of hyperEdges produced by simulation, 
@@ -546,7 +666,7 @@ function foldem(hyperg::myHyperGraph, fold_k)
 
     #fscore_matrix, fscore_matrixReverse = Float64[], Float64[]
     #n_loops = (cv[1] .|> length |> length)
-    av_f1_scores = []
+    av_f1_scores = Float64[]
     for (k, j) in zip(cv[1], cv[2])
         # k is E^T, the training set and j the 'missing' set, E^M
         # check E^M for disconnected vertices. Return either the folded 
@@ -558,7 +678,8 @@ function foldem(hyperg::myHyperGraph, fold_k)
         end
         @debug onefold, kept_hedges
         #kept_he =
-        hhg = replace(hyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
+        #hhg = replace(hyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
+        hhg = mySubHyperGraph(myhyperg, k) #, collect(onefold))
 
         # Now create new h-edges for the kfold E^T hgraph, that later we will 
         # compare to onefold E^M edges. 
@@ -567,6 +688,7 @@ function foldem(hyperg::myHyperGraph, fold_k)
         new_Hedges = create_new_hyperedge(hhg, n=length(j))
 
         new_Hedges_mat = create_mat(new_Hedges)
+        @info typeof(hyperg.H[:, kept_hedges]), typeof(new_Hedges_mat)
         fs = calc_av_F1score_matrix(new_Hedges_mat, hyperg.H[:, kept_hedges])
         push!(av_f1_scores, fs)
         println("fs = $(fs)")

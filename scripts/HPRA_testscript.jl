@@ -19,11 +19,21 @@ begin
 
     hh = myHyperGraph(h_rand)
     A(hh)
-    A_ndp(hh)
+    Andp(hh)
     Incidence(h_rand)
 end
 
 h_rand
+
+# a dict simlar to hh.v_neighbours
+newDict = Dict{keytype(hh.v_neighbours),valtype(hh.v_neighbours) }
+for n in sort(hh.v_neighbours)
+
+    @info n.first, n.second
+    println("hrand $(h_Neighbours(h_rand,n.first))")
+end
+
+aa = mySubHyperGraph(hh, collect(1:10))
 
 begin
     using MAT
@@ -91,7 +101,7 @@ exit()
 cv = collect(kfolds(myhyperg.e_id, fold_k))
 
 #n_loops = (cv[1] .|> length |> length)
-av_f1_scores = []
+av_f1_scores = Float64[]
 (k, j) = collect(zip(cv[1], cv[2]))[1]
 # k is E^T, the training set and j the 'missing' set, E^M
 # check E^M for disconnected vertices. Return either the folded 
@@ -99,9 +109,9 @@ av_f1_scores = []
 # the corrected iterator over which we are going to cross validate
 onefold = find_connected_he(myhyperg, (k, j))
 #miss =  
-@info onefold
-hhg = replace(myhyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
-
+@info "kept columns in H, onefold = $onefold"
+hhg1 = replace(myhyperg.H[:, k], 0 => nothing) |> Hypergraph |> myHyperGraph
+hhg = mySubHyperGraph(myhyperg, k)
 # Now create new h-edges for the kfold E^T hgraph, that later we will 
 # compare to onefold E^M edges. 
 
@@ -255,6 +265,8 @@ end
 @time hramat = fill_HRA(HG); # this is more than 6 times faster 
 
 @time HG = myHyperGraph(Hcitecoref)
+
+#######################################################
 
 function h_Neighbours_mat(hg::Hypergraph, v_id::Int)
     # this is slower than h_Neighbours
