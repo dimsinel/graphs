@@ -2,14 +2,18 @@ name = "graphs"
 authors = ["dimsinel"]
 
 [deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Cthulhu = "f68482b8-f384-11e8-15f7-abe071a5a75f"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+FLoops = "cc61a311-1640-44b5-9fba-1b764f453329"
 Folds = "41a02a25-b8f0-4f67-bc48-60067656b558"
+FoldsCUDA = "6cd66ae4-5932-4b96-926d-e73e578e42cc"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 GraphIO = "aa1b3936-2fda-51b9-ab35-c553d3a640a2"
 GraphMakie = "1ecd5474-83a3-4783-bb4f-06765db800d2"
 GraphPlot = "a2cc645c-3eea-5389-862e-a155d0052231"
@@ -30,6 +34,8 @@ SimpleWeightedGraphs = "47aef6b3-ad0c-573a-a1e2-d07658019622"
 StaticGraphs = "4c8beaf5-199b-59a0-a7f2-21d17de635b6"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+SuiteSparseGraphBLAS = "c2e53296-7b14-11e9-1210-bddfa8111e1d"
+Transducers = "28d57a85-8fef-5791-bfe6-a80928e7c999"
 
 [compat]
 DrWatson = "2.13.0"

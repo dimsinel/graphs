@@ -25,7 +25,7 @@ end
 
 @show CppHello.greet()
 
-CppHello.add(1.1,2)
+CppHello.add(1.1, 2)
 
 
 using MLUtils
@@ -40,17 +40,17 @@ X, Y = load_iris()
 Xs, Ys = shuffleobs((X, Y))
 
 # We leave out 15 % of the data for testing
-cv_data, test_data = splitobs((Xs, Ys); at=0.85)
+cv_data, test_data = splitobs((Xs, Ys); at = 0.85)
 
 # Next we partition the data using a 10-fold scheme.
-for (train_data, val_data) in kfolds(cv_data; k=10)
+for (train_data, val_data) in kfolds(cv_data; k = 10)
 
     # We apply a lazy transform for data augmentation
-    train_data = mapobs(xy -> (xy[1] .+ 0.1 .* randn.(), xy[2]),  train_data)
+    train_data = mapobs(xy -> (xy[1] .+ 0.1 .* randn.(), xy[2]), train_data)
 
     for epoch = 1:10
         # Iterate over the data using mini-batches of 5 observations each
-        for (x, y) in eachobs(train_data, batchsize=5)
+        for (x, y) in eachobs(train_data, batchsize = 5)
             @show x, y
             # ... train supervised model on minibatches here
         end
@@ -64,16 +64,16 @@ m2 = MulticlassFScore()
 
 y₀ = coerce(categorical(rand("abc", 10)), Multiclass)
 #y₀ = categorical(rand("abc", 10))
-y = coerce(categorical(rand("abc", 10) ), Multiclass) # or `coerce(rand("abc", 10), Multiclass))`
+y = coerce(categorical(rand("abc", 10)), Multiclass) # or `coerce(rand("abc", 10), Multiclass))`
 #ŷ = categorical(rand("abc", 10))
-ŷ = coerce(categorical(rand("abc", 10) ), Multiclass)  # or `coerce(rand("abc", 10), Multiclass))`
+ŷ = coerce(categorical(rand("abc", 10)), Multiclass)  # or `coerce(rand("abc", 10), Multiclass))`
 
 MulticlassFScore()(ŷ, y)
 #MulticlassFScore()(ŷ, y, class_w)
 
 
 
-m1(y, ŷ) 
+m1(y, ŷ)
 m1(y₀, ŷ)
 
 m2(y, ŷ)
@@ -96,7 +96,7 @@ f1_score(y_true, y_pred, average='micro') ---> 0.3333333333333333
 f1_score(y_true, y_pred, average='weighted')---> 0.26666666666666666
 f1_score(y_true, y_pred, average=None)---> array([0.8, 0. , 0. ])
 =#
-m1 = FScore(levels=[0,1])
+m1 = FScore(levels = [0, 1])
 m1(y_true, y_pred)
 m2(y_true, y_pred)
 # but MulticlassFscore has 3 aliases.
@@ -139,19 +139,19 @@ py"compute_f1_score"(y_pred, y_true)
 
 ### Another try 
 
-microf1 = Vector{Float64}(undef,0)
-macrof1 = Vector{Float64}(undef,0)
-pyf1 = Vector{Float64}(undef,0)
-pyf1R = Vector{Float64}(undef,0)
-m1f1 = Vector{Float64}(undef,0)
-m1f1R = Vector{Float64}(undef,0)
+microf1 = Vector{Float64}(undef, 0)
+macrof1 = Vector{Float64}(undef, 0)
+pyf1 = Vector{Float64}(undef, 0)
+pyf1R = Vector{Float64}(undef, 0)
+m1f1 = Vector{Float64}(undef, 0)
+m1f1R = Vector{Float64}(undef, 0)
 
-for i in 1:10000
+for i = 1:10000
     y_true = rand([0, 1], 30)
     y_pred = rand([0, 1], 30)
-    
+
     # confmat(y_true, y_pred)
-    pyf = py"compute_f1_score"(y_true,y_pred)
+    pyf = py"compute_f1_score"(y_true, y_pred)
     pyfR = py"compute_f1_score"(y_pred, y_true)
     jmacrof = macro_f1score(y_true, y_pred)
     #jmicrof = m1(y_true, y_pred)
@@ -164,17 +164,17 @@ for i in 1:10000
 
     # but MulticlassFscore has 3 aliases.
     #micro_f1score(y_true, y_pred)
-    push!( microf1, jmicrof )
-    push!( macrof1, jmacrof )
+    push!(microf1, jmicrof)
+    push!(macrof1, jmacrof)
     #multiclass_f1score(y_true, y_pred)
     #confmat(y_true, y_pred)
-    push!( pyf1, pyf )
-    push!( pyf1R, pyfR )
+    push!(pyf1, pyf)
+    push!(pyf1R, pyfR)
     push!(m1f1, m1f)
     push!(m1f1R, m1fR)
 end
 
-histogram(macrof1, label="macro") #, bins = .2:.01:.3)
+histogram(macrof1, label = "macro") #, bins = .2:.01:.3)
 
 #############################
 histogram(pyf1, label = "python") #, bins = .2:.01:.3)
@@ -186,17 +186,17 @@ sum(m1f1R - m1f1)
 # pyf symmetric
 sum(pyf1R - pyf1)
 
-h_micro = histogram!(microf1, label= "micro")
+h_micro = histogram!(microf1, label = "micro")
 
 import StatsBase, Distributions
 length(pyf1), typeof(pyf1)
 h_microfit = StatsBase.fit(Distributions.Normal, pyf1)
 
 # this must be a pdf or something, look it up
-plot!(h_microfit, linewidth = 4)
+plot(h_microfit, linewidth = 4)
 
-a=[ 1 2 3; 4 5 6 ]
-a[1,2], a[2,1]
+a = [1 2 3; 4 5 6]
+a[1, 2], a[2, 1]
 
 
 clf = ConstantClassifier()
@@ -204,11 +204,13 @@ X, y = @load_crabs # a table and a categorical vector
 mach = machine(clf, X, y) |> fit!
 
 fitted_params(mach)
-Xnew = (; FL=[8.1, 24.8, 7.2],
-    RW=[5.1, 25.7, 6.4],
-    CL=[15.9, 46.7, 14.3],
-    CW=[18.7, 59.7, 12.2],
-    BD=[6.2, 23.6, 8.4],)
+Xnew = (;
+    FL = [8.1, 24.8, 7.2],
+    RW = [5.1, 25.7, 6.4],
+    CL = [15.9, 46.7, 14.3],
+    CW = [18.7, 59.7, 12.2],
+    BD = [6.2, 23.6, 8.4],
+)
 
 yhat = predict(mach, Xnew)
 yhat[1]
@@ -226,4 +228,4 @@ pdf(yhat, L)
 
 
 
-bit(x,y) = @pipe (x & x) |>  (digits(_, base=2, pad=8) |> reverse)'
+bit(x, y) = @pipe (x & x) |> (digits(_, base = 2, pad = 8) |> reverse)'

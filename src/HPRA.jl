@@ -28,7 +28,7 @@ using MLJ
 measures("FScore")
 
 # Gepmetrical mean f1 score (β=1) Dunno what levels are supposed to be ;^P
-m = FScore(levels=[0, 1], checks=false)
+m = FScore(levels = [0, 1], checks = false)
 
 ####################################################
 
@@ -38,7 +38,7 @@ struct Spl <: Sampleable{Univariate,Discrete}
 end
 
 ####################################################
-function Base.rand(spl::Spl; n=1)
+function Base.rand(spl::Spl; n = 1)
     l = length(spl.vect)
     spl.vect[rand(1:l, n)]
 end;
@@ -57,10 +57,14 @@ end
 HyperEdge() = HyperEdge{Int64}(0, 0, Dict{Int64,Float64}(), 1.0)
 HyperEdge{T}(e::Int64, v::Int64) where {T} = HyperEdge(e, v, Dict{Int64,T}(), 1.0)
 HyperEdge{T}(e::Int64, v::Int64, w::Float64) where {T} = HyperEdge(e, v, Dict{Int64,T}(), w)
-HyperEdge{T}(e::Int64, v::Int64, d::Dict{Int64,T}, w::Float64) where {T} = HyperEdge(e, v, d, w)
+HyperEdge{T}(e::Int64, v::Int64, d::Dict{Int64,T}, w::Float64) where {T} =
+    HyperEdge(e, v, d, w)
 
 # This one copies hyperedge e_idx from a hypergraph 
-function HyperEdge{T}(h::Hypergraph{Float64,Nothing,Nothing,Dict{Int64,T}}, e_idx::Int64) where {T}
+function HyperEdge{T}(
+    h::Hypergraph{T,Nothing,Nothing,Dict{Int64,T}},
+    e_idx::Int64,
+) where {T}
     hedge = HyperEdge{T}(e_idx, size(h, 1))
     for j in eachindex(h[:, e_idx])
         if !isnothing(h[j, e_idx])
@@ -124,15 +128,16 @@ end
 #################################################################33
 
 using Pipe: @pipe
-find_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dims=2) |> any(==(0), _)
-find_all_empty_nodes(mat) = @pipe replace(mat, nothing => 0) |> reduce(+, _, dims=2) |> findall(==(0), _)
+find_empty_nodes(mat) =
+    @pipe replace(mat, nothing => 0) |> reduce(+, _, dims = 2) |> any(==(0), _)
+find_all_empty_nodes(mat) =
+    @pipe replace(mat, nothing => 0) |> reduce(+, _, dims = 2) |> findall(==(0), _)
 
 #################################################################33
 
 using MLJBase, MLJ, MLUtils
 
-struct HypergraphClassifier <: MLJBase.Probabilistic
-end
+struct HypergraphClassifier <: MLJBase.Probabilistic end
 
 # fit returns the result of applying create_new_hyperedge on input X:
 function MLJBase.fit(model::HypergraphClassifier, verbosity, X, y)
@@ -155,21 +160,25 @@ function SimpleHypergraphs.add_hyperedge!(hg::Hypergraph, newhedge::HyperEdge)
     """
     if newhedge.e_id <= length(hg.he2v)
         #this is not an add, issue a warning
-        println("Cannot add hyperedge $(newhedge.e_id), Gypergraph has $(size(hg.he2v)) h-edges. Returning")
+        println(
+            "Cannot add hyperedge $(newhedge.e_id), Gypergraph has $(size(hg.he2v)) h-edges. Returning",
+        )
         return false
     end
 
     if newhedge.e_id != size(hg)[2] + 1
-        println("Cannot add hyperedge $(newhedge.e_id) to hypergraph: It contains $(size(hg)[2]) hyperdges.")
+        println(
+            "Cannot add hyperedge $(newhedge.e_id) to hypergraph: It contains $(size(hg)[2]) hyperdges.",
+        )
         return false
     end
 
-    add_hyperedge!(hg, vertices=newhedge.nodes)
+    add_hyperedge!(hg, vertices = newhedge.nodes)
     return true
 end
 
 #############################################################
-function node_degree(h::Hypergraph, v_id::Int; edge_size::Int=1)
+function node_degree(h::Hypergraph, v_id::Int; edge_size::Int = 1)
     """Degree of a node: it is the number of edges it is contained within. 
     The optional edge_size parameter places a restriction on the size of the edges 
     you consider (default edge_size=1). The degree function looks 
@@ -258,7 +267,7 @@ end
 
 ###########################################
 using LaTeXStrings
-function RA(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_size::Int=1)
+function RA(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int = 1, edge_size::Int = 1)
     L"""
  #   Resource Allocation  of 2 *not directly connected* nodes x, y is   
     the \sum_{z∈ [N(x) ∩ N(y)]} \frac{1}{d(z)},
@@ -270,17 +279,23 @@ function RA(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_size::In
         return nothing
     end
 
-    ny = h_Neighbours(h, y, n_commmon_edges=n_commmon_edges)
+    ny = h_Neighbours(h, y, n_commmon_edges = n_commmon_edges)
     ra = 0.0
     for z in nx ∩ ny
-        ra += 1 / node_degree(h, z, edge_size=edge_size)
+        ra += 1 / node_degree(h, z, edge_size = edge_size)
         #println("---- ",z, "  ",node_degree(h, z, edge_size= edge_size) )
     end
     return ra
 end
 
 
-function HRA_direct(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_size::Int=1)
+function HRA_direct(
+    h::Hypergraph,
+    x::Int,
+    y::Int;
+    n_commmon_edges::Int = 1,
+    edge_size::Int = 1,
+)
     L"""
     Direct part of Hyper Resource Allocation.   
     HRA_{direct} (x, y) = \sum_{e, s.t. x,y ∈e} 1/ [δ(e) - 1] 
@@ -307,7 +322,13 @@ function HRA_direct(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_
     return hrad
 end
 
-function HRA_indirect(h::Hypergraph, x::Int, y::Int; n_commmon_edges::Int=1, edge_size::Int=1)
+function HRA_indirect(
+    h::Hypergraph,
+    x::Int,
+    y::Int;
+    n_commmon_edges::Int = 1,
+    edge_size::Int = 1,
+)
     L"""
         Inirect part of Hyper Resource Allocation.   
         HRA_{indirect} (x, y) =  \sum_{z ∈N (x) ∩ N(y)} 
@@ -347,7 +368,7 @@ end
 
 #################################################3
 
-function HRA(h::Hypergraph, x::Int, y::Int; α=0.5)
+function HRA(h::Hypergraph, x::Int, y::Int; α = 0.5)
     if x == y
         return nothing
     end
@@ -405,7 +426,7 @@ end
 
 function nodes_degree(h::Hypergraph)
     dd = Vector{Float64}(undef, 0)
-    for n in 1:nhv(h)
+    for n = 1:nhv(h)
         deg = node_degree(h, n)
         #@show n, deg
         if !isnothing(deg)
@@ -521,7 +542,7 @@ function create_node_sampler(ndb::Vector{Float64})::Spl
     # oool contains node degrees. It contains n elements with value n, eg there are 5 fives and 7 sevens
     # so that when we sample it, the probability to choose degree d will be proportional to the degree.
     for i in pooldensity
-        for j in 1:i
+        for j = 1:i
             push!(pool, i)
         end
     end
@@ -532,7 +553,7 @@ function create_node_sampler(ndb::Vector{Float64})::Spl
 end
 
 ##################################################3
-function get_random_node_by_degree(nbl, node_deg; accuracy=0.1)
+function get_random_node_by_degree(nbl, node_deg; accuracy = 0.1)
     """
         Returns a random node whose degree is within atol (see Base.isapprox) 
         of input value deg.
@@ -542,7 +563,7 @@ function get_random_node_by_degree(nbl, node_deg; accuracy=0.1)
 
     #println(">>>>  ", nbl[1:10], "  ", typeof(node_deg), " ", node_deg)
     #, findall(isapprox(deg, atol=0.1), nbl))
-    res = (findall(isapprox(node_deg, atol=0.1), nbl) |> rand)
+    res = (findall(isapprox(node_deg, atol = 0.1), nbl) |> rand)
 
 end
 
@@ -550,7 +571,7 @@ end
 using StatsBase
 
 
-function create_new_hyperedge(hg::Hypergraph; n::Int64=1)
+function create_new_hyperedge(hg::Hypergraph; n::Int64 = 1)
     """
     Returns a vector of HyperEdges of length n, extrapolated from hg
     """
@@ -585,7 +606,7 @@ function create_new_hyperedge(hg::Hypergraph; n::Int64=1)
     # e_id -- its just conventional
     hyperedges = Vector{HyperEdge}(undef, n)
 
-    for n_of_edges in 1:n
+    for n_of_edges = 1:n
 
         # step 1 - 2
         # So now we can add the new hyperdge, whcih contains the first node w/ weight 1.
@@ -669,7 +690,8 @@ function find_disconnected_he(hyperg::Hypergraph, cv_partition)
             exit(1)
         end
 
-        non_zero_hyperedges = @pipe replace(hyperg[x[1], onefold], nothing => 0) |> findall(!=(0), _)
+        non_zero_hyperedges =
+            @pipe replace(hyperg[x[1], onefold], nothing => 0) |> findall(!=(0), _)
         #println("Node $(x[1]) is zero. Checking E^M at $(non_zero_hyperedges)")
         push!(discarded_he, non_zero_hyperedges...)
         #display(hyperg[:, onefold])
@@ -714,7 +736,7 @@ function foldem(hyperg::Hypergraph, fold_k)
         # compare to onefold E^M edges. 
 
 
-        new_Hedges = create_new_hyperedge(hhg, n=length(onefold))
+        new_Hedges = create_new_hyperedge(hhg, n = length(onefold))
 
         fs = calc_av_F1score_matrix(new_Hedges, hyperg[:, onefold])
         push!(av_f1_scores, fs)
@@ -744,7 +766,7 @@ function calc_av_F1score_matrix_1(Eᴾ, Eᴹ)
     fscore_matrix = zeros(Float64, vsp_dim, vsp_dim)
     #fscore_matrixReverse = zeros(Float64, vsp_dim, vsp_dim)
 
-    idxlist = [(i, j) for j in 1:vsp_dim for i in 1:vsp_dim]
+    idxlist = [(i, j) for j = 1:vsp_dim for i = 1:vsp_dim]
 
     foreach(idxlist) do (i, j)
 
@@ -766,7 +788,7 @@ function argmaxg_mean(fscore_matrix)
     """
     # first index is predicted, second missing
     # here we sum over predicted. 
-    maximum(fscore_matrix, dims=2) |> mean
+    maximum(fscore_matrix, dims = 2) |> mean
 
 end
 
@@ -779,7 +801,7 @@ function argmaxg_prime_mean(fscore_matrix)
     # For missing 1 (col 1, [:,1]) which row is best?
     #  this is maximum(mat, dims=1) 
     #@show size(fscore_matrix)
-    maximum(fscore_matrix, dims=1) |> mean
+    maximum(fscore_matrix, dims = 1) |> mean
 
 end
 
@@ -789,7 +811,9 @@ function test_argmax_equiv(n)
     for (k, v) in means
         println("$k mean $(mean(v)) ") # std $(std(v))")
     end
-    println("The same numbers distributed in different dimension matrices do not have the same means")
+    println(
+        "The same numbers distributed in different dimension matrices do not have the same means",
+    )
 
 end
 
@@ -799,14 +823,19 @@ function test_argmax_equiv_first(n)
         rvect = rand(1:100, 100)
         a = reshape(rvect, (2, 50))
         b = reshape(rvect, (10, 10))
-        ad1 = maximum(a, dims=1) |> mean
-        ad2 = maximum(a, dims=2) |> mean
-        bd1 = maximum(b, dims=1) |> mean
-        bd2 = maximum(b, dims=2) |> mean
+        ad1 = maximum(a, dims = 1) |> mean
+        ad2 = maximum(a, dims = 2) |> mean
+        bd1 = maximum(b, dims = 1) |> mean
+        bd2 = maximum(b, dims = 2) |> mean
         return (ad1, ad2, bd1, bd2)
     end
 
-    means = Dict(["2_50_dims=1" => [], "2_50_dims=2" => [], "10_10_dims=1" => [], "10_10_dims=2" => []])
+    means = Dict([
+        "2_50_dims=1" => [],
+        "2_50_dims=2" => [],
+        "10_10_dims=1" => [],
+        "10_10_dims=2" => [],
+    ])
     foreach(1:n) do x
         x = make_means()
 
@@ -819,4 +848,3 @@ function test_argmax_equiv_first(n)
     return means
 
 end
-
